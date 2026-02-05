@@ -298,4 +298,80 @@ router.put('/profile', authenticate, async (req: any, res) => {
   }
 });
 
+// Get all users (for tagging functionality)
+router.get('/users', authenticate, async (req, res) => {
+  try {
+    const [users]: any = await pool.execute(
+      'SELECT id, first_name, last_name, email, profile_image, role FROM users WHERE is_approved = 1 ORDER BY first_name, last_name'
+    );
+
+    res.json({ users });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Failed to fetch users' });
+  }
+});
+
+// Update notification preferences
+router.put('/notification-preferences', authenticate, async (req: any, res) => {
+  try {
+    const { pushNotifications, emailUpdates, eventReminders } = req.body;
+    const userId = req.user.id;
+
+    // Validate boolean values
+    const push = pushNotifications === true || pushNotifications === false ? pushNotifications : true;
+    const email = emailUpdates === true || emailUpdates === false ? emailUpdates : true;
+    const event = eventReminders === true || eventReminders === false ? eventReminders : true;
+
+    // Update preferences
+    await pool.execute(
+      'UPDATE users SET push_notifications = ?, email_updates = ?, event_reminders = ? WHERE id = ?',
+      [push, email, event, userId]
+    );
+
+    console.log(`User ${userId} notification preferences updated:`, { push, email, event });
+
+    res.json({
+      message: 'Notification preferences updated successfully',
+      preferences: {
+        pushNotifications: push,
+        emailUpdates: email,
+        eventReminders: event
+      }
+    });
+  } catch (error) {
+    console.error('Error updating notification preferences:', error);
+    res.status(500).json({ message: 'Failed to update notification preferences' });
+  }
+});
+
+// Get notification preferences
+router.get('/notification-preferences', authenticate, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [users]: any = await pool.execute(
+      'SELECT push_notifications, email_updates, event_reminders FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const user = users[0];
+
+    res.json({
+      preferences: {
+        pushNotifications: user.push_notifications !== 0,
+        emailUpdates: user.email_updates !== 0,
+        eventReminders: user.event_reminders !== 0
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching notification preferences:', error);
+    res.status(500).json({ message: 'Failed to fetch notification preferences' });
+  }
+});
+
 export default router;

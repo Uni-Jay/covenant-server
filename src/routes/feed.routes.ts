@@ -110,7 +110,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 // Create post
 router.post('/', authenticate, upload.single('media'), async (req: AuthRequest, res: Response) => {
   try {
-    const { content, postType = 'general' } = req.body;
+    const { content, postType = 'general', taggedUsers } = req.body;
     const userId = req.user!.id;
 
     if (!content || content.trim().length === 0) {
@@ -132,6 +132,24 @@ router.post('/', authenticate, upload.single('media'), async (req: AuthRequest, 
       [userId, content, mediaUrl, mediaType, postType]
     ) as any;
 
+    const postId = result.insertId;
+
+    // Handle tagged users
+    if (taggedUsers) {
+      try {
+        const userIds = typeof taggedUsers === 'string' ? JSON.parse(taggedUsers) : taggedUsers;
+        if (Array.isArray(userIds) && userIds.length > 0) {
+          const tagValues = userIds.map((taggedUserId: number) => [postId, taggedUserId]);
+          await pool.query(
+            'INSERT INTO post_tags (post_id, user_id) VALUES ?',
+            [tagValues]
+          );
+        }
+      } catch (tagError) {
+        console.error('Error tagging users:', tagError);
+      }
+    }
+
     const [post] = await pool.execute(`
       SELECT 
         fp.*,
@@ -139,10 +157,11 @@ router.post('/', authenticate, upload.single('media'), async (req: AuthRequest, 
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
       WHERE fp.id = ?
-    `, [result.insertId]) as any;
+    `, [postId]) as any;
 
     res.status(201).json({ post: post[0] });
   } catch (error: any) {
+    console.error('Create post error:', error);
     res.status(500).json({ error: error.message });
   }
 });

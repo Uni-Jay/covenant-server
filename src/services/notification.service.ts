@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import pool from '../config/database';
 
 // Email configuration
 const transporter = nodemailer.createTransport({
@@ -194,7 +195,137 @@ const getFirstTimerWelcomeEmail = (firstName: string) => `
 </html>
 `;
 
+// Check if user has enabled specific notification type
+export const checkNotificationPreference = async (
+  userId: number,
+  notificationType: 'push' | 'email' | 'event'
+): Promise<boolean> => {
+  try {
+    const [users]: any = await pool.execute(
+      'SELECT push_notifications, email_updates, event_reminders FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return true; // Default to enabled if user not found
+    }
+
+    const user = users[0];
+    
+    switch (notificationType) {
+      case 'push':
+        return user.push_notifications !== 0;
+      case 'email':
+        return user.email_updates !== 0;
+      case 'event':
+        return user.event_reminders !== 0;
+      default:
+        return true;
+    }
+  } catch (error) {
+    console.error('Error checking notification preference:', error);
+    return true; // Default to enabled on error
+  }
+};
+
+// Send email with preference check
+export const sendEmailNotification = async (
+  userId: number,
+  to: string,
+  subject: string,
+  htmlContent: string
+): Promise<boolean> => {
+  try {
+    // Check if user has email notifications enabled
+    const emailEnabled = await checkNotificationPreference(userId, 'email');
+    
+    if (!emailEnabled) {
+      console.log(`⏭️ Email skipped for user ${userId} - email updates disabled`);
+      return false;
+    }
+
+    await transporter.sendMail({
+      from: `"Word of Covenant" <${process.env.EMAIL_USER || 'noreply@wordofcovenant.org'}>`,
+      to,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`✓ Email sent to ${to}`);
+    return true;
+  } catch (error) {
+    console.error('Email send error:', error);
+    return false;
+  }
+};
+
+// Send event reminder email
+export const sendEventReminderEmail = async (
+  userId: number,
+  to: string,
+  eventName: string,
+  eventDate: string,
+  eventTime: string,
+  eventLocation: string
+): Promise<boolean> => {
+  try {
+    // Check if user has event reminders enabled
+    const eventRemindersEnabled = await checkNotificationPreference(userId, 'event');
+    
+    if (!eventRemindersEnabled) {
+      console.log(`⏭️ Event reminder skipped for user ${userId} - event reminders disabled`);
+      return false;
+    }
+
+    const subject = `📅 Reminder: ${eventName}`;
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9f9f9; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+    .content { background: white; padding: 30px; border-radius: 0 0 10px 10px; }
+    .event-details { background: #f0f4ff; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📅 Event Reminder</h1>
+    </div>
+    <div class="content">
+      <p>This is a friendly reminder about an upcoming event:</p>
+      
+      <div class="event-details">
+        <h2>${eventName}</h2>
+        <p><strong>📅 Date:</strong> ${eventDate}</p>
+        <p><strong>🕐 Time:</strong> ${eventTime}</p>
+        <p><strong>📍 Location:</strong> ${eventLocation}</p>
+      </div>
+      
+      <p>We look forward to seeing you there!</p>
+      
+      <p><em>God bless you!</em></p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    return await sendEmailNotification(userId, to, subject, htmlContent);
+  } catch (error) {
+    console.error('Event reminder email error:', error);
+    return false;
+  }
+};
+
 export default {
   sendWelcomeEmail,
   sendWelcomeSMS,
+  checkNotificationPreference,
+  sendEmailNotification,
+  sendEventReminderEmail,
 };

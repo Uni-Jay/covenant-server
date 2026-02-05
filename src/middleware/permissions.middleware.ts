@@ -149,7 +149,7 @@ export const hasPermission = (userRole: string, permission: string): boolean => 
 
 // Check if user is executive (can download letterheads)
 export const isExecutive = (userRole: string): boolean => {
-  const executiveRoles = ['super_admin', 'pastor', 'elder', 'secretary', 'media_head', 'department_head', 'finance', 'deacon'];
+  const executiveRoles = ['super_admin', 'admin', 'pastor', 'elder', 'secretary', 'media_head', 'media', 'department_head', 'finance', 'deacon'];
   return executiveRoles.includes(userRole);
 };
 
