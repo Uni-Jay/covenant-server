@@ -38,8 +38,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       params.push(type);
     }
 
-    query += ' ORDER BY fp.is_pinned DESC, fp.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    query += ` ORDER BY fp.is_pinned DESC, fp.created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    console.log('[Feed] Query:', query);
+    console.log('[Feed] Params:', params);
+    console.log('[Feed] Params count:', params.length);
 
     const [posts] = await pool.execute(query, params);
 

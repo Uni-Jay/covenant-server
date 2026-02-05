@@ -595,6 +595,51 @@ router.post('/groups/:id/upload', authenticate, upload.single('file'), async (re
   }
 });
 
+// Delete message
+router.delete('/messages/:messageId', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const messageId = parseInt(req.params.messageId);
+    const userId = req.user!.id;
+
+    if (isNaN(messageId)) {
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    // Check if message exists and belongs to user
+    const [messages] = await pool.query(
+      'SELECT id, sender_id, media_url FROM chat_messages WHERE id = ?',
+      [messageId]
+    ) as any;
+
+    if (messages.length === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const message = messages[0];
+    if (message.sender_id !== userId) {
+      return res.status(403).json({ error: 'You can only delete your own messages' });
+    }
+
+    // Delete the message
+    await pool.query('DELETE FROM chat_messages WHERE id = ?', [messageId]);
+
+    // If there's a media file, optionally delete it from filesystem
+    if (message.media_url) {
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = path.join(__dirname, '../../', message.media_url);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    res.json({ message: 'Message deleted successfully' });
+  } catch (error: any) {
+    console.error('[Chat Delete] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Sync current user's department groups
 router.post('/sync-my-groups', authenticate, async (req: AuthRequest, res: Response) => {
   try {
