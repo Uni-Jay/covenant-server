@@ -5,8 +5,10 @@ import pool from '../config/database';
 import { authenticate } from '../middleware/auth.middleware';
 import { sendWelcomeEmail, sendWelcomeSMS } from '../services/notification.service';
 import { syncUserDepartmentGroups } from '../services/chat.service';
+import { OAuth2Client } from 'google-auth-library';
 
 const router = Router();
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Register
 router.post('/register', async (req, res) => {
@@ -158,6 +160,110 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Login failed' });
+  }
+});
+
+// Google Authentication
+router.post('/google', async (req, res) => {
+  try {
+    const { idToken, user: googleUser } = req.body;
+
+    // Verify the Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ message: 'Invalid Google token' });
+    }
+
+    const email = payload.email;
+    const firstName = googleUser.firstName || payload.given_name || '';
+    const lastName = googleUser.lastName || payload.family_name || '';
+    const photo = googleUser.photo || payload.picture || null;
+    const googleId = googleUser.googleId || payload.sub;
+
+    // Check if user exists
+    const [existingUsers]: any = await pool.execute(
+      'SELECT * FROM users WHERE email = ? OR google_id = ?',
+      [email, googleId]
+    );
+
+    let userId: number;
+    let userRole = 'member';
+    let userDepartments: string[] = [];
+
+    if (existingUsers.length > 0) {
+      // User exists - update Google ID and photo if not set
+      const existingUser = existingUsers[0];
+      userId = existingUser.id;
+      userRole = existingUser.role;
+
+      // Parse departments
+      if (existingUser.departments) {
+        if (Array.isArray(existingUser.departments)) {
+          userDepartments = existingUser.departments;
+        } else if (typeof existingUser.departments === 'string') {
+          try {
+            userDepartments = JSON.parse(existingUser.departments);
+          } catch (parseError) {
+            userDepartments = existingUser.departments.split(',').map((d: string) => d.trim()).filter((d: string) => d);
+          }
+        }
+      }
+
+      // Update Google ID and photo if not already set
+      if (!existingUser.google_id || !existingUser.photo) {
+        await pool.execute(
+          'UPDATE users SET google_id = ?, photo = ? WHERE id = ?',
+          [googleId, photo, userId]
+        );
+      }
+    } else {
+      // Create new user
+      const [result]: any = await pool.execute(
+        'INSERT INTO users (email, first_name, last_name, google_id, photo, role) VALUES (?, ?, ?, ?, ?, ?)',
+        [email, firstName, lastName, googleId, photo, 'member']
+      );
+
+      userId = result.insertId;
+
+      // Send welcome notifications (async)
+      const fullName = firstName || 'Friend';
+      if (email) {
+        sendWelcomeEmail(email, fullName, 'member').catch(err => 
+          console.error('Failed to send welcome email:', err)
+        );
+      }
+    }
+
+    // Generate JWT token
+    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+    const token = jwt.sign(
+      { id: userId, email, role: userRole },
+      jwtSecret,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      message: 'Google authentication successful',
+      token,
+      user: {
+        id: userId,
+        email,
+        firstName,
+        lastName,
+        fullName: `${firstName} ${lastName}`.trim() || email,
+        photo,
+        role: userRole,
+        departments: userDepartments
+      }
+    });
+  } catch (error) {
+    console.error('Google authentication error:', error);
+    res.status(500).json({ message: 'Google authentication failed' });
   }
 });
 
