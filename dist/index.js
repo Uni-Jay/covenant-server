@@ -9,6 +9,9 @@ const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
+const http_1 = require("http");
+const socket_service_1 = require("./services/socket.service");
+const birthday_service_1 = require("./services/birthday.service");
 // Import routes
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const sermon_routes_1 = __importDefault(require("./routes/sermon.routes"));
@@ -28,6 +31,10 @@ const hymn_routes_1 = __importDefault(require("./routes/hymn.routes"));
 const notification_routes_1 = __importDefault(require("./routes/notification.routes"));
 const firstTimer_routes_1 = __importDefault(require("./routes/firstTimer.routes"));
 const dashboard_routes_1 = __importDefault(require("./routes/dashboard.routes"));
+const attendance_routes_1 = __importDefault(require("./routes/attendance.routes"));
+const departments_routes_1 = __importDefault(require("./routes/departments.routes"));
+const users_routes_1 = __importDefault(require("./routes/users.routes"));
+const ai_routes_1 = __importDefault(require("./routes/ai.routes"));
 // Load environment variables
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -73,6 +80,10 @@ app.use('/api/hymns', hymn_routes_1.default);
 app.use('/api/notifications', notification_routes_1.default);
 app.use('/api/first-timers', firstTimer_routes_1.default);
 app.use('/api/dashboard', dashboard_routes_1.default);
+app.use('/api/attendance', attendance_routes_1.default);
+app.use('/api/departments', departments_routes_1.default);
+app.use('/api/users', users_routes_1.default);
+app.use('/api/ai', ai_routes_1.default);
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'Server is running' });
@@ -85,9 +96,16 @@ app.use((err, req, res, next) => {
         error: process.env.NODE_ENV === 'development' ? err : {}
     });
 });
+// Create HTTP server
+const httpServer = (0, http_1.createServer)(app);
+// Set up Socket.IO for real-time chat and WebRTC
+(0, socket_service_1.setupSocketIO)(httpServer);
 // Start server
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📖 Environment: ${process.env.NODE_ENV}`);
+    console.log(`🔌 Socket.IO server ready`);
+    // Initialize birthday checker
+    (0, birthday_service_1.initializeBirthdayChecker)();
 });
 exports.default = app;

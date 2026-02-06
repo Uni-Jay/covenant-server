@@ -42,6 +42,7 @@ const permissions_middleware_1 = require("../middleware/permissions.middleware")
 const database_1 = __importDefault(require("../config/database"));
 const uuid_1 = require("uuid");
 const bcrypt = __importStar(require("bcrypt"));
+const notification_service_1 = require("../services/notification.service");
 const router = express_1.default.Router();
 // Generate QR code for first-timer registration
 router.post('/generate-qr', auth_middleware_1.authenticate, (0, permissions_middleware_1.requirePermission)('manage_events'), async (req, res) => {
@@ -85,6 +86,14 @@ router.post('/register', async (req, res) => {
         // Update attendance count
         await connection.execute('UPDATE first_timers SET sunday_attendance_count = 1 WHERE id = ?', [firstTimerId]);
         await connection.commit();
+        // Send welcome email and SMS (async, don't wait)
+        const fullName = firstName;
+        if (email) {
+            (0, notification_service_1.sendWelcomeEmail)(email, fullName, 'first_timer').catch(err => console.error('Failed to send welcome email:', err));
+        }
+        if (phone) {
+            (0, notification_service_1.sendWelcomeSMS)(phone, fullName, 'first_timer').catch(err => console.error('Failed to send welcome SMS:', err));
+        }
         res.status(201).json({
             message: 'Welcome! You have been successfully registered as a first-timer.',
             firstTimerId,

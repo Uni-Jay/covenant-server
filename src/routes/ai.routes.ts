@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = Router();
 
 // Gemini API configuration
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
-const GEMINI_IMAGE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // System prompt for the AI assistant
 const SYSTEM_PROMPT = `You are an advanced, omnipotent AI Assistant with unlimited knowledge and capabilities in ALL domains.
@@ -100,78 +100,32 @@ router.post('/chat', authenticate, async (req: any, res) => {
                       message.toLowerCase().includes('make a video') ||
                       message.toLowerCase().includes('film');
 
-    // Build conversation history
-    const contents: any[] = [];
-    
-    // Add system prompt
-    contents.push({
-      role: 'user',
-      parts: [{ text: SYSTEM_PROMPT }]
-    });
-    contents.push({
-      role: 'model',
-      parts: [{ text: 'I understand. I am an omnipotent AI Assistant with unlimited capabilities. I can answer ANY question, generate images and videos, explain biblical texts in original languages, discuss theology, help with app navigation, and assist with anything else you need. My knowledge spans all domains and I can help with absolutely anything. How can I help you today?' }]
+    // Initialize Gemini model with proper configuration
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-flash-latest',
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 2048,
+      },
     });
 
-    // Add conversation history
+    // Build conversation history for context
+    let conversationContext = SYSTEM_PROMPT + '\n\n';
+    
     if (history && Array.isArray(history)) {
       history.slice(-6).forEach((msg: any) => {
-        contents.push({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.content }]
-        });
+        conversationContext += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n`;
       });
     }
+    
+    conversationContext += `User: ${message}\nAssistant:`;
 
-    // Add current message
-    contents.push({
-      role: 'user',
-      parts: [{ text: message }]
-    });
-
-    // Call Gemini API
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-        },
-        safetySettings: [
-          {
-            category: 'HARM_CATEGORY_HARASSMENT',
-            threshold: 'BLOCK_NONE',
-          },
-          {
-            category: 'HARM_CATEGORY_HATE_SPEECH',
-            threshold: 'BLOCK_NONE',
-          },
-          {
-            category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE',
-          },
-          {
-            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-            threshold: 'BLOCK_NONE',
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Gemini API error:', errorData);
-      throw new Error('AI service error');
-    }
-
-    const data = await response.json() as any;
-    const aiMessage = data.candidates?.[0]?.content?.parts?.[0]?.text || 'I apologize, but I could not generate a response.';
+    // Generate response
+    const result = await model.generateContent(conversationContext);
+    const response = await result.response;
+    const aiMessage = response.text();
 
     let imageUrl: string | undefined;
     let videoUrl: string | undefined;
@@ -242,6 +196,38 @@ router.get('/suggestions', authenticate, async (req: any, res) => {
   } catch (error: any) {
     console.error('Get suggestions error:', error);
     res.status(500).json({ message: 'Failed to get suggestions' });
+  }
+});
+
+// Test API key endpoint
+router.get('/test', authenticate, async (req: any, res) => {
+  try {
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ 
+        status: 'error',
+        message: 'GEMINI_API_KEY not configured in environment variables' 
+      });
+    }
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    const result = await model.generateContent('Say "Hello, World!"');
+    const response = await result.response;
+    const text = response.text();
+
+    res.json({ 
+      status: 'success',
+      message: 'Gemini API is working correctly',
+      response: text,
+      model: 'gemini-1.5-flash-latest'
+    });
+  } catch (error: any) {
+    console.error('API test error:', error);
+    res.status(500).json({ 
+      status: 'error',
+      message: 'Gemini API test failed',
+      error: error.message,
+      details: error.toString()
+    });
   }
 });
 

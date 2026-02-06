@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { createServer } from 'http';
 import { setupSocketIO } from './services/socket.service';
+import { initializeBirthdayChecker } from './services/birthday.service';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
@@ -110,6 +111,9 @@ httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📖 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔌 Socket.IO server ready`);
+  
+  // Initialize birthday checker
+  initializeBirthdayChecker();
 });
 
 export default app;

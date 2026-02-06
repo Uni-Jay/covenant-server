@@ -26,6 +26,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       SELECT 
         fp.*,
         u.first_name, u.last_name, u.profile_image, u.role,
+        (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
+        (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
@@ -80,6 +82,8 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       SELECT 
         fp.*,
         u.first_name, u.last_name, u.profile_image, u.role,
+        (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
+        (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id

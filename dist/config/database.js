@@ -14,7 +14,10 @@ const pool = promise_1.default.createPool({
     port: parseInt(process.env.DB_PORT || '3306'),
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    connectTimeout: 30000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0
 });
 // Test connection
 pool.getConnection()
@@ -24,5 +27,6 @@ pool.getConnection()
 })
     .catch(err => {
     console.error('❌ MySQL connection failed:', err.message);
+    console.error('⚠️  Please ensure MySQL/WAMP is running and database exists');
 });
 exports.default = pool;

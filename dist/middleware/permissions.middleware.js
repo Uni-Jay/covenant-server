@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.canAccessDepartment = exports.requireSuperAdmin = exports.requireAdmin = exports.requireRole = exports.requirePermission = exports.hasRoleLevel = exports.isExecutive = exports.hasPermission = exports.permissions = exports.roleHierarchy = void 0;
+exports.canAccessDepartment = exports.requireSuperAdmin = exports.requireAdmin = exports.requireRole = exports.requirePermission = exports.hasRoleLevel = exports.isExecutive = exports.hasPermission = exports.hasMediaDepartment = exports.permissions = exports.roleHierarchy = void 0;
+const database_1 = __importDefault(require("../config/database"));
 // Role hierarchy (higher roles have all permissions of lower roles)
 exports.roleHierarchy = {
     'super_admin': 10,
@@ -83,6 +87,34 @@ exports.permissions = {
     // Audit logs
     'audit:view': ['super_admin', 'pastor', 'media_head']
 };
+// Check if user has Media department (super admin access)
+const hasMediaDepartment = async (userId) => {
+    try {
+        const [users] = await database_1.default.execute('SELECT departments FROM users WHERE id = ?', [userId]);
+        if (users.length === 0)
+            return false;
+        const user = users[0];
+        let departments = [];
+        if (user.departments) {
+            if (Array.isArray(user.departments)) {
+                departments = user.departments;
+            }
+            else if (typeof user.departments === 'string') {
+                try {
+                    departments = JSON.parse(user.departments);
+                }
+                catch {
+                    departments = user.departments.split(',').map((d) => d.trim());
+                }
+            }
+        }
+        return departments.some((d) => d.toLowerCase() === 'media');
+    }
+    catch (error) {
+        return false;
+    }
+};
+exports.hasMediaDepartment = hasMediaDepartment;
 // Check if user has a specific permission
 const hasPermission = (userRole, permission) => {
     const allowedRoles = exports.permissions[permission];
@@ -95,7 +127,7 @@ const hasPermission = (userRole, permission) => {
 exports.hasPermission = hasPermission;
 // Check if user is executive (can download letterheads)
 const isExecutive = (userRole) => {
-    const executiveRoles = ['super_admin', 'pastor', 'elder', 'secretary', 'media_head', 'department_head', 'finance', 'deacon'];
+    const executiveRoles = ['super_admin', 'admin', 'pastor', 'elder', 'secretary', 'media_head', 'media', 'department_head', 'finance', 'deacon'];
     return executiveRoles.includes(userRole);
 };
 exports.isExecutive = isExecutive;
@@ -108,9 +140,14 @@ const hasRoleLevel = (userRole, requiredRole) => {
 exports.hasRoleLevel = hasRoleLevel;
 // Middleware to check if user has required permission
 const requirePermission = (permission) => {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({ error: 'Unauthorized' });
+        }
+        // Anyone with Media department has all permissions
+        const isMedia = await (0, exports.hasMediaDepartment)(req.user.id);
+        if (isMedia) {
+            return next();
         }
         if (!(0, exports.hasPermission)(req.user.role, permission)) {
             return res.status(403).json({

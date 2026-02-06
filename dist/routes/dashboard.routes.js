@@ -11,72 +11,140 @@ const router = express_1.default.Router();
 // Get overall statistics
 router.get('/stats', auth_middleware_1.authenticate, (0, permissions_middleware_1.requirePermission)('view_dashboard'), async (req, res) => {
     try {
-        // Total members by role
-        const [members] = await database_1.default.execute(`SELECT role, COUNT(*) as count 
-       FROM users 
-       WHERE is_approved = TRUE 
-       GROUP BY role`);
-        // Total first-timers
-        const [firstTimersResult] = await database_1.default.execute('SELECT COUNT(*) as total FROM first_timers WHERE is_converted_to_member = FALSE');
-        // Converted first-timers this month
-        const [convertedResult] = await database_1.default.execute(`SELECT COUNT(*) as total FROM first_timers 
-       WHERE is_converted_to_member = TRUE 
-       AND MONTH(last_visit_date) = MONTH(CURDATE()) 
-       AND YEAR(last_visit_date) = YEAR(CURDATE())`);
-        // Total attendance this month
-        const [attendanceResult] = await database_1.default.execute(`SELECT COUNT(*) as total FROM attendance 
-       WHERE MONTH(service_date) = MONTH(CURDATE()) 
-       AND YEAR(service_date) = YEAR(CURDATE())`);
-        // Sunday service attendance average
-        const [sundayAvgResult] = await database_1.default.execute(`SELECT AVG(daily_count) as average FROM (
-        SELECT COUNT(*) as daily_count 
-        FROM attendance 
-        WHERE service_type = 'sunday_service' 
-        AND MONTH(service_date) = MONTH(CURDATE())
-        GROUP BY service_date
-      ) as daily_attendance`);
-        // Total donations this month
-        const [donationsResult] = await database_1.default.execute(`SELECT SUM(amount) as total FROM donations 
-       WHERE MONTH(created_at) = MONTH(CURDATE()) 
-       AND YEAR(created_at) = YEAR(CURDATE())`);
-        // Upcoming events
-        const [upcomingEvents] = await database_1.default.execute(`SELECT COUNT(*) as total FROM events 
-       WHERE date >= CURDATE() 
-       AND date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)`);
-        // Active prayer requests
-        const [activePrayers] = await database_1.default.execute(`SELECT COUNT(*) as total FROM prayer_requests 
-       WHERE status = 'open'`);
+        // Total members by role (handle is_approved column that may not exist)
+        let members = [];
+        try {
+            const [membersResult] = await database_1.default.execute(`SELECT role, COUNT(*) as count 
+         FROM users 
+         WHERE is_approved = TRUE 
+         GROUP BY role`);
+            members = membersResult;
+        }
+        catch (columnError) {
+            // If is_approved column doesn't exist, get all users
+            if (columnError.code === 'ER_BAD_FIELD_ERROR') {
+                console.log('is_approved column not found, querying all users');
+                const [membersResult] = await database_1.default.execute(`SELECT role, COUNT(*) as count 
+           FROM users 
+           GROUP BY role`);
+                members = membersResult;
+            }
+            else {
+                throw columnError;
+            }
+        }
+        // Total first-timers (wrapped in try-catch)
+        let firstTimersTotal = 0;
+        let convertedTotal = 0;
+        try {
+            const [firstTimersResult] = await database_1.default.execute('SELECT COUNT(*) as total FROM first_timers WHERE is_converted_to_member = FALSE');
+            firstTimersTotal = firstTimersResult[0]?.total || 0;
+            const [convertedResult] = await database_1.default.execute(`SELECT COUNT(*) as total FROM first_timers 
+         WHERE is_converted_to_member = TRUE 
+         AND MONTH(last_visit_date) = MONTH(CURDATE()) 
+         AND YEAR(last_visit_date) = YEAR(CURDATE())`);
+            convertedTotal = convertedResult[0]?.total || 0;
+        }
+        catch (e) {
+            console.log('First timers table not accessible');
+        }
+        // Total attendance this month (wrapped in try-catch)
+        let attendanceTotal = 0;
+        let sundayAverage = 0;
+        try {
+            const [attendanceResult] = await database_1.default.execute(`SELECT COUNT(*) as total FROM attendance 
+         WHERE MONTH(service_date) = MONTH(CURDATE()) 
+         AND YEAR(service_date) = YEAR(CURDATE())`);
+            attendanceTotal = attendanceResult[0]?.total || 0;
+            const [sundayAvgResult] = await database_1.default.execute(`SELECT AVG(daily_count) as average FROM (
+          SELECT COUNT(*) as daily_count 
+          FROM attendance 
+          WHERE service_type = 'sunday_service' 
+          AND MONTH(service_date) = MONTH(CURDATE())
+          GROUP BY service_date
+        ) as daily_attendance`);
+            sundayAverage = Math.round(sundayAvgResult[0]?.average || 0);
+        }
+        catch (e) {
+            console.log('Attendance table not accessible');
+        }
+        // Total donations this month (wrapped in try-catch)
+        let donationsTotal = 0;
+        try {
+            const [donationsResult] = await database_1.default.execute(`SELECT SUM(amount) as total FROM donations 
+         WHERE MONTH(created_at) = MONTH(CURDATE()) 
+         AND YEAR(created_at) = YEAR(CURDATE())`);
+            donationsTotal = donationsResult[0]?.total || 0;
+        }
+        catch (e) {
+            console.log('Donations table not accessible');
+        }
+        // Upcoming events (wrapped in try-catch)
+        let upcomingEventsTotal = 0;
+        try {
+            const [upcomingEvents] = await database_1.default.execute(`SELECT COUNT(*) as total FROM events 
+         WHERE date >= CURDATE() 
+         AND date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)`);
+            upcomingEventsTotal = upcomingEvents[0]?.total || 0;
+        }
+        catch (e) {
+            console.log('Events table not accessible');
+        }
+        // Active prayer requests (wrapped in try-catch)
+        let activePrayersTotal = 0;
+        try {
+            const [activePrayers] = await database_1.default.execute(`SELECT COUNT(*) as total FROM prayer_requests 
+         WHERE status = 'open'`);
+            activePrayersTotal = activePrayers[0]?.total || 0;
+        }
+        catch (e) {
+            console.log('Prayer requests table not accessible');
+        }
         // Total posts this month
-        const [postsResult] = await database_1.default.execute(`SELECT COUNT(*) as total FROM feed_posts 
-       WHERE MONTH(created_at) = MONTH(CURDATE()) 
-       AND YEAR(created_at) = YEAR(CURDATE())`);
-        // Active chat groups
-        const [groupsResult] = await database_1.default.execute('SELECT COUNT(*) as total FROM chat_groups WHERE is_active = TRUE');
+        let postsTotal = 0;
+        try {
+            const [postsResult] = await database_1.default.execute(`SELECT COUNT(*) as total FROM feed_posts 
+         WHERE MONTH(created_at) = MONTH(CURDATE()) 
+         AND YEAR(created_at) = YEAR(CURDATE())`);
+            postsTotal = postsResult[0]?.total || 0;
+        }
+        catch (e) {
+            console.log('Feed posts table not accessible');
+        }
+        // Active chat groups (wrapped in try-catch)
+        let groupsTotal = 0;
+        try {
+            const [groupsResult] = await database_1.default.execute('SELECT COUNT(*) as total FROM chat_groups WHERE is_active = TRUE');
+            groupsTotal = groupsResult[0]?.total || 0;
+        }
+        catch (e) {
+            console.log('Chat groups table not accessible');
+        }
         res.json({
             members: {
                 byRole: members,
                 total: members.reduce((sum, m) => sum + m.count, 0)
             },
             firstTimers: {
-                active: firstTimersResult[0].total,
-                convertedThisMonth: convertedResult[0].total
+                active: firstTimersTotal,
+                convertedThisMonth: convertedTotal
             },
             attendance: {
-                totalThisMonth: attendanceResult[0].total,
-                sundayAverage: Math.round(sundayAvgResult[0].average || 0)
+                totalThisMonth: attendanceTotal,
+                sundayAverage: sundayAverage
             },
             donations: {
-                totalThisMonth: donationsResult[0].total || 0
+                totalThisMonth: donationsTotal
             },
             events: {
-                upcoming: upcomingEvents[0].total
+                upcoming: upcomingEventsTotal
             },
             prayers: {
-                active: activePrayers[0].total
+                active: activePrayersTotal
             },
             community: {
-                postsThisMonth: postsResult[0].total,
-                activeGroups: groupsResult[0].total
+                postsThisMonth: postsTotal,
+                activeGroups: groupsTotal
             }
         });
     }

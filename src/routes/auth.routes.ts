@@ -13,11 +13,19 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, firstName, lastName, phone, gender, departments } = req.body;
+    const { email, password, firstName, lastName, phone, gender, dateOfBirth } = req.body;
 
     // Validate required fields
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    if (!dateOfBirth) {
+      return res.status(400).json({ message: 'Date of birth is required' });
     }
 
     // Check if user exists
@@ -34,16 +42,14 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Prepare values with proper null handling
-    const departmentsJson = departments && departments.length > 0 ? JSON.stringify(departments) : null;
     const safeFirstName = firstName || null;
     const safeLastName = lastName || null;
-    const safePhone = phone || null;
     const safeGender = gender || null;
 
-    // Insert user
+    // Insert user with date_of_birth
     const [result]: any = await pool.execute(
-      'INSERT INTO users (email, password, first_name, last_name, phone, gender, departments) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [email, hashedPassword, safeFirstName, safeLastName, safePhone, safeGender, departmentsJson]
+      'INSERT INTO users (email, password, first_name, last_name, phone, gender, date_of_birth) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [email, hashedPassword, safeFirstName, safeLastName, phone, safeGender, dateOfBirth]
     );
 
     // Generate token
@@ -54,28 +60,25 @@ router.post('/register', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    // Send welcome email and SMS (async, don't wait)
+    // Send welcome email and SMS immediately
     const fullName = safeFirstName || 'Friend';
+    
+    // Send welcome email
     if (email) {
       sendWelcomeEmail(email, fullName, 'member').catch(err => 
         console.error('Failed to send welcome email:', err)
       );
     }
-    if (safePhone) {
-      sendWelcomeSMS(safePhone, fullName, 'member').catch(err => 
+    
+    // Send welcome SMS
+    if (phone) {
+      sendWelcomeSMS(phone, fullName, 'member').catch(err => 
         console.error('Failed to send welcome SMS:', err)
       );
     }
 
-    // Auto-create department group chats and add user (async, don't wait)
-    if (departments && departments.length > 0) {
-      syncUserDepartmentGroups(result.insertId, departments).catch(err =>
-        console.error('Failed to sync department groups:', err)
-      );
-    }
-
     res.status(201).json({
-      message: 'User registered successfully',
+      message: 'Welcome to Word of Covenant Church! Check your email and phone for a welcome message.',
       token,
       user: { 
         id: result.insertId, 
@@ -83,9 +86,9 @@ router.post('/register', async (req, res) => {
         firstName: safeFirstName, 
         lastName: safeLastName, 
         fullName: `${safeFirstName || ''} ${safeLastName || ''}`.trim() || 'User',
-        phone: safePhone,
-        gender: safeGender, 
-        departments: departments || [], 
+        phone,
+        gender: safeGender,
+        dateOfBirth, 
         role: 'member' 
       }
     });

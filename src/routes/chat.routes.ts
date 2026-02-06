@@ -713,7 +713,9 @@ router.get('/groups/:id/members', authenticate, async (req: AuthRequest, res: Re
         u.id, 
         u.first_name, 
         u.last_name, 
-        u.email, 
+        u.email,
+        u.profile_image as profileImage,
+        u.photo,
         gm.role,
         gm.joined_at
       FROM group_members gm
@@ -740,9 +742,9 @@ router.post('/groups/:id/members', authenticate, async (req: AuthRequest, res: R
       return res.status(400).json({ error: 'newUserId is required' });
     }
 
-    // Check if requester is an executive (admin/executive role in group_members)
+    // Check if requester is a member of this group
     const [requesterMembership] = await pool.query(
-      'SELECT role FROM group_members WHERE group_id = ? AND user_id = ?',
+      'SELECT gm.role, cg.department FROM group_members gm INNER JOIN chat_groups cg ON gm.group_id = cg.id WHERE gm.group_id = ? AND gm.user_id = ?',
       [groupId, userId]
     ) as any;
 
@@ -750,8 +752,15 @@ router.post('/groups/:id/members', authenticate, async (req: AuthRequest, res: R
       return res.status(403).json({ error: 'You are not a member of this group' });
     }
 
-    if (requesterMembership[0].role !== 'admin' && requesterMembership[0].role !== 'executive') {
-      return res.status(403).json({ error: 'Only executives can add members' });
+    // Check if requester is a department executive (has a position in this department)
+    const groupDepartment = requesterMembership[0].department;
+    const [executive] = await pool.query(
+      'SELECT id, executive_position FROM users WHERE id = ? AND is_executive = 1 AND department = ?',
+      [userId, groupDepartment]
+    ) as any;
+
+    if (executive.length === 0) {
+      return res.status(403).json({ error: 'Only department executives can add members' });
     }
 
     // Check if new user already exists
@@ -784,9 +793,9 @@ router.delete('/groups/:id/members/:userId', authenticate, async (req: AuthReque
     const groupId = parseInt(req.params.id);
     const userIdToRemove = parseInt(req.params.userId);
 
-    // Check if requester is an executive
+    // Check if requester is a member and get group department
     const [requesterMembership] = await pool.query(
-      'SELECT role FROM group_members WHERE group_id = ? AND user_id = ?',
+      'SELECT gm.role, cg.department FROM group_members gm INNER JOIN chat_groups cg ON gm.group_id = cg.id WHERE gm.group_id = ? AND gm.user_id = ?',
       [groupId, requesterId]
     ) as any;
 
@@ -794,8 +803,15 @@ router.delete('/groups/:id/members/:userId', authenticate, async (req: AuthReque
       return res.status(403).json({ error: 'You are not a member of this group' });
     }
 
-    if (requesterMembership[0].role !== 'admin' && requesterMembership[0].role !== 'executive') {
-      return res.status(403).json({ error: 'Only executives can remove members' });
+    // Check if requester is a department executive (has a position in this department)
+    const groupDepartment = requesterMembership[0].department;
+    const [executive] = await pool.query(
+      'SELECT id, executive_position FROM users WHERE id = ? AND is_executive = 1 AND department = ?',
+      [requesterId, groupDepartment]
+    ) as any;
+
+    if (executive.length === 0) {
+      return res.status(403).json({ error: 'Only department executives can remove members' });
     }
 
     // Don't allow removing admins
@@ -939,6 +955,68 @@ router.get('/groups/:id/info', authenticate, async (req: AuthRequest, res: Respo
     res.json({ group: groupInfo[0] });
   } catch (error: any) {
     console.error('[Group Info] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add reaction to message
+router.post('/messages/:messageId/reactions', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const messageId = parseInt(req.params.messageId);
+    const { reaction } = req.body;
+
+    if (!reaction) {
+      return res.status(400).json({ error: 'Reaction emoji is required' });
+    }
+
+    // Check if user already reacted with this emoji
+    const [existing] = await pool.query(
+      'SELECT id FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?',
+      [messageId, userId, reaction]
+    ) as any;
+
+    if (existing.length > 0) {
+      // Remove reaction (toggle off)
+      await pool.query(
+        'DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?',
+        [messageId, userId, reaction]
+      );
+      res.json({ message: 'Reaction removed', removed: true });
+    } else {
+      // Add reaction
+      await pool.query(
+        'INSERT INTO message_reactions (message_id, user_id, reaction) VALUES (?, ?, ?)',
+        [messageId, userId, reaction]
+      );
+      res.json({ message: 'Reaction added', removed: false });
+    }
+  } catch (error: any) {
+    console.error('[Add Reaction] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get reactions for a message
+router.get('/messages/:messageId/reactions', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const messageId = parseInt(req.params.messageId);
+
+    // Get all reactions grouped by emoji
+    const [reactions] = await pool.query(`
+      SELECT 
+        reaction,
+        COUNT(*) as count,
+        GROUP_CONCAT(CONCAT(u.first_name, ' ', u.last_name) SEPARATOR ', ') as users
+      FROM message_reactions mr
+      JOIN users u ON mr.user_id = u.id
+      WHERE mr.message_id = ?
+      GROUP BY reaction
+    `, [messageId]) as any;
+
+    res.json({ reactions });
+  } catch (error: any) {
+    console.error('[Get Reactions] Error:', error);
     res.status(500).json({ error: error.message });
   }
 });

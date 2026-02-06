@@ -20,8 +20,6 @@ router.get('/', auth_middleware_1.authenticate, async (req, res) => {
       SELECT 
         fp.*,
         u.first_name, u.last_name, u.profile_image, u.role,
-        (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
-        (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
@@ -31,8 +29,10 @@ router.get('/', auth_middleware_1.authenticate, async (req, res) => {
             query += ' WHERE fp.post_type = ?';
             params.push(type);
         }
-        query += ' ORDER BY fp.is_pinned DESC, fp.created_at DESC LIMIT ? OFFSET ?';
-        params.push(limit, offset);
+        query += ` ORDER BY fp.is_pinned DESC, fp.created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+        console.log('[Feed] Query:', query);
+        console.log('[Feed] Params:', params);
+        console.log('[Feed] Params count:', params.length);
         const [posts] = await database_1.default.execute(query, params);
         // Get total count
         let countQuery = 'SELECT COUNT(*) as total FROM feed_posts';
@@ -51,6 +51,7 @@ router.get('/', auth_middleware_1.authenticate, async (req, res) => {
         });
     }
     catch (error) {
+        console.error('Feed error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -62,8 +63,6 @@ router.get('/:id', auth_middleware_1.authenticate, async (req, res) => {
       SELECT 
         fp.*,
         u.first_name, u.last_name, u.profile_image, u.role,
-        (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
-        (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
@@ -91,7 +90,7 @@ router.get('/:id', auth_middleware_1.authenticate, async (req, res) => {
 // Create post
 router.post('/', auth_middleware_1.authenticate, upload_middleware_1.upload.single('media'), async (req, res) => {
     try {
-        const { content, postType = 'general' } = req.body;
+        const { content, postType = 'general', taggedUsers } = req.body;
         const userId = req.user.id;
         if (!content || content.trim().length === 0) {
             return res.status(400).json({ error: 'Content is required' });
@@ -105,6 +104,20 @@ router.post('/', auth_middleware_1.authenticate, upload_middleware_1.upload.sing
         }
         const [result] = await database_1.default.execute(`INSERT INTO feed_posts (user_id, content, media_url, media_type, post_type) 
        VALUES (?, ?, ?, ?, ?)`, [userId, content, mediaUrl, mediaType, postType]);
+        const postId = result.insertId;
+        // Handle tagged users
+        if (taggedUsers) {
+            try {
+                const userIds = typeof taggedUsers === 'string' ? JSON.parse(taggedUsers) : taggedUsers;
+                if (Array.isArray(userIds) && userIds.length > 0) {
+                    const tagValues = userIds.map((taggedUserId) => [postId, taggedUserId]);
+                    await database_1.default.query('INSERT INTO post_tags (post_id, user_id) VALUES ?', [tagValues]);
+                }
+            }
+            catch (tagError) {
+                console.error('Error tagging users:', tagError);
+            }
+        }
         const [post] = await database_1.default.execute(`
       SELECT 
         fp.*,
@@ -112,10 +125,11 @@ router.post('/', auth_middleware_1.authenticate, upload_middleware_1.upload.sing
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
       WHERE fp.id = ?
-    `, [result.insertId]);
+    `, [postId]);
         res.status(201).json({ post: post[0] });
     }
     catch (error) {
+        console.error('Create post error:', error);
         res.status(500).json({ error: error.message });
     }
 });

@@ -18,7 +18,8 @@ const storage = multer_1.default.diskStorage({
         const subDir = req.baseUrl.includes('sermon') ? 'sermons' :
             req.baseUrl.includes('event') ? 'events' :
                 req.baseUrl.includes('gallery') ? 'gallery' :
-                    req.baseUrl.includes('blog') ? 'blog' : 'others';
+                    req.baseUrl.includes('blog') ? 'blog' :
+                        req.baseUrl.includes('chat') ? 'chat' : 'others';
         const targetDir = path_1.default.join(uploadDir, subDir);
         if (!fs_1.default.existsSync(targetDir)) {
             fs_1.default.mkdirSync(targetDir, { recursive: true });
