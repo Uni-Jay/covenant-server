@@ -22,23 +22,36 @@ const requireMedia = async (req: any, res: any, next: any) => {
   }
 };
 
-// Get all department executives
+// Get all department executives (with optional department filter)
 router.get('/executives', authenticate, async (req: any, res) => {
   try {
-    const [executives] = await pool.execute(`
+    const { department } = req.query;
+    
+    let query = `
       SELECT 
         id, 
         email, 
         first_name as firstName, 
         last_name as lastName, 
+        CONCAT(first_name, ' ', last_name) as fullName,
+        photo,
         department,
         executive_position as executivePosition,
         is_executive as isExecutive
       FROM users 
       WHERE is_executive = 1 
       AND department IS NOT NULL
-      ORDER BY department, executive_position
-    `) as any;
+    `;
+    
+    const params: any[] = [];
+    if (department) {
+      query += ' AND department = ?';
+      params.push(department);
+    }
+    
+    query += ' ORDER BY department, executive_position';
+
+    const [executives] = await pool.execute(query, params) as any;
 
     res.json(executives);
   } catch (error: any) {
@@ -90,48 +103,60 @@ router.get('/leaders', authenticate, async (req: any, res) => {
 // Add department executive
 router.post('/executives', authenticate, requireMedia, async (req: any, res) => {
   try {
-    const { email, department, executivePosition } = req.body;
+    const { userId, department, position } = req.body;
 
-    if (!email || !department || !executivePosition) {
-      return res.status(400).json({ message: 'All fields are required' });
+    if (!userId || !department || !position) {
+      return res.status(400).json({ message: 'userId, department, and position are required' });
     }
 
     // Check if user exists
     const [users] = await pool.execute(
-      'SELECT id, first_name, last_name FROM users WHERE email = ?',
-      [email]
+      'SELECT id, first_name, last_name, email, photo FROM users WHERE id = ?',
+      [userId]
     ) as any;
 
     if (users.length === 0) {
-      return res.status(404).json({ message: 'User not found with this email' });
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    // Update user to be executive
+    const user = users[0];
+
+    // Check if position is already filled
+    const [existing] = await pool.execute(
+      'SELECT id FROM users WHERE department = ? AND executive_position = ? AND is_executive = 1',
+      [department, position]
+    ) as any;
+
+    if (existing.length > 0) {
+      return res.status(400).json({ message: 'This position is already filled' });
+    }
+
+    // Update user to be executive with this position
     await pool.execute(
       `UPDATE users 
        SET is_executive = 1, 
            department = ?, 
            executive_position = ?
-       WHERE email = ?`,
-      [department, executivePosition, email]
+       WHERE id = ?`,
+      [department, position, userId]
     );
 
     // Also add department to departments JSON array if not exists
     const [currentUser] = await pool.execute(
-      'SELECT departments FROM users WHERE email = ?',
-      [email]
+      'SELECT departments FROM users WHERE id = ?',
+      [userId]
     ) as any;
 
     const currentDepts = currentUser[0].departments ? JSON.parse(currentUser[0].departments) : [];
     if (!currentDepts.includes(department)) {
       currentDepts.push(department);
       await pool.execute(
-        'UPDATE users SET departments = ? WHERE email = ?',
-        [JSON.stringify(currentDepts), email]
+        'UPDATE users SET departments = ? WHERE id = ?',
+        [JSON.stringify(currentDepts), userId]
       );
 
       // Sync department group chats (async, don't wait)
-      syncUserDepartmentGroups(users[0].id, currentDepts).catch(err =>
+      syncUserDepartmentGroups(userId, currentDepts).catch(err =>
         console.error('Failed to sync department groups:', err)
       );
     }
@@ -139,12 +164,14 @@ router.post('/executives', authenticate, requireMedia, async (req: any, res) => 
     res.json({ 
       message: 'Executive added successfully',
       executive: {
-        id: users[0].id,
-        firstName: users[0].first_name,
-        lastName: users[0].last_name,
-        email,
+        id: user.id,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        fullName: `${user.first_name} ${user.last_name}`,
+        email: user.email,
+        photo: user.photo,
         department,
-        executivePosition,
+        executivePosition: position,
       }
     });
   } catch (error: any) {

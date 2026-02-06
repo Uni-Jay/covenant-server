@@ -155,7 +155,6 @@ router.get('/report', authenticate, requirePermission('view_attendance'), async 
         e.title as event_title
       FROM attendance a
       LEFT JOIN users u ON a.user_id = u.id
-      LEFT JOIN first_timers ft ON a.first_timer_id = ft.id
       LEFT JOIN events e ON a.event_id = e.id
       WHERE 1=1
     `;
@@ -194,7 +193,6 @@ router.get('/report', authenticate, requirePermission('view_attendance'), async 
         service_date,
         service_type,
         COUNT(DISTINCT user_id) as member_count,
-        COUNT(DISTINCT first_timer_id) as first_timer_count,
         COUNT(*) as total_count
        FROM attendance
        WHERE service_date >= ? ${serviceType ? 'AND service_type = ?' : ''}
@@ -229,12 +227,9 @@ router.get('/by-date/:date', authenticate, requirePermission('view_attendance'),
         u.last_name,
         u.email,
         u.role,
-        ft.first_name as ft_first_name,
-        ft.last_name as ft_last_name,
         e.title as event_title
       FROM attendance a
       LEFT JOIN users u ON a.user_id = u.id
-      LEFT JOIN first_timers ft ON a.first_timer_id = ft.id
       LEFT JOIN events e ON a.event_id = e.id
       WHERE a.service_date = ?
     `;
@@ -255,7 +250,6 @@ router.get('/by-date/:date', authenticate, requirePermission('view_attendance'),
       serviceType: serviceType || 'all',
       totalAttendance: attendance.length,
       members: attendance.filter((a: any) => a.user_id).length,
-      firstTimers: attendance.filter((a: any) => a.first_timer_id).length,
       attendance
     });
   } catch (error: any) {

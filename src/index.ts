@@ -28,6 +28,8 @@ import firstTimerRoutes from './routes/firstTimer.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import attendanceRoutes from './routes/attendance.routes';
 import departmentsRoutes from './routes/departments.routes';
+import usersRoutes from './routes/users.routes';
+import aiRoutes from './routes/ai.routes';
 
 // Load environment variables
 dotenv.config();
@@ -80,6 +82,8 @@ app.use('/api/first-timers', firstTimerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/departments', departmentsRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
