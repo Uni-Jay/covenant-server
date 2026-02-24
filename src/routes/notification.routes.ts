@@ -65,8 +65,15 @@ async function sendSMS(phone: string, message: string) {
 }
 
 // Send event reminder to all users and first-timers
-router.post('/send-event-reminder', authenticate, requirePermission('manage_events'), async (req, res) => {
+router.post('/send-event-reminder', authenticate, async (req: any, res) => {
   const { eventId, message, subject, sendEmail: shouldSendEmail, sendSMS: shouldSendSMS } = req.body;
+  
+  // Check if user is admin or media
+  const isAuthorized = req.user.role === 'admin' || req.user.role === 'media' || req.user.role === 'media_head';
+  if (!isAuthorized) {
+    return res.status(403).json({ message: 'You do not have permission to send notifications' });
+  }
+  
   const connection = await pool.getConnection();
 
   try {
@@ -372,6 +379,121 @@ router.post('/send-to-role', authenticate, requirePermission('manage_events'), a
   } catch (error: any) {
     console.error('Send to role error:', error);
     res.status(500).json({ message: 'Failed to send notifications', error: error.message });
+  }
+});
+
+// Get user notifications (inbox)
+router.get('/inbox', authenticate, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
+    // Get notifications for this user
+    const [notifications] = await pool.query(`
+      SELECT 
+        id, 
+        notification_type as type,
+        message,
+        subject as title,
+        is_read,
+        created_at,
+        sent_at
+      FROM notification_queue
+      WHERE (recipient_id = ? OR recipient_role = 'all' OR recipient_role = ?)
+      AND status = 'sent'
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `, [userId, userRole]) as any;
+
+    // Get total count
+    const [countResult] = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM notification_queue
+      WHERE (recipient_id = ? OR recipient_role = 'all' OR recipient_role = ?)
+      AND status = 'sent'
+    `, [userId, userRole]) as any;
+
+    // Get unread count
+    const [unreadResult] = await pool.query(`
+      SELECT COUNT(*) as unread
+      FROM notification_queue
+      WHERE (recipient_id = ? OR recipient_role = 'all' OR recipient_role = ?)
+      AND status = 'sent'
+      AND is_read = FALSE
+    `, [userId, userRole]) as any;
+
+    res.json({
+      notifications,
+      pagination: {
+        page,
+        limit,
+        total: countResult[0].total,
+        totalPages: Math.ceil(countResult[0].total / limit)
+      },
+      unreadCount: unreadResult[0].unread
+    });
+  } catch (error: any) {
+    console.error('Get inbox error:', error);
+    res.status(500).json({ message: 'Failed to fetch notifications', error: error.message });
+  }
+});
+
+// Mark notification as read
+router.put('/inbox/:id/read', authenticate, async (req: any, res) => {
+  try {
+    const notificationId = req.params.id;
+    
+    await pool.execute(
+      'UPDATE notification_queue SET is_read = TRUE WHERE id = ?',
+      [notificationId]
+    );
+
+    res.json({ message: 'Notification marked as read' });
+  } catch (error: any) {
+    console.error('Mark read error:', error);
+    res.status(500).json({ message: 'Failed to mark notification as read', error: error.message });
+  }
+});
+
+// Mark all notifications as read
+router.put('/inbox/read-all', authenticate, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    
+    await pool.execute(`
+      UPDATE notification_queue 
+      SET is_read = TRUE 
+      WHERE (recipient_id = ? OR recipient_role = 'all' OR recipient_role IN (
+        SELECT role FROM users WHERE id = ?
+      ))
+      AND status = 'sent'
+      AND is_read = FALSE
+    `, [userId, userId]);
+
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error: any) {
+    console.error('Mark all read error:', error);
+    res.status(500).json({ message: 'Failed to mark all as read', error: error.message });
+  }
+});
+
+// Delete notification
+router.delete('/inbox/:id', authenticate, async (req: any, res) => {
+  try {
+    const notificationId = req.params.id;
+    
+    await pool.execute(
+      'DELETE FROM notification_queue WHERE id = ?',
+      [notificationId]
+    );
+
+    res.json({ message: 'Notification deleted' });
+  } catch (error: any) {
+    console.error('Delete notification error:', error);
+    res.status(500).json({ message: 'Failed to delete notification', error: error.message });
   }
 });
 

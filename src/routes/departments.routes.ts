@@ -2,22 +2,27 @@ import { Router } from 'express';
 import pool from '../config/database';
 import { authenticate } from '../middleware/auth.middleware';
 import { hasMediaDepartment } from '../middleware/permissions.middleware';
-import { syncUserDepartmentGroups } from '../services/chat.service';
+import { syncUserDepartmentGroups, addUserToExecutiveGroup, removeUserFromExecutiveGroup } from '../services/chat.service';
 
 const router = Router();
 
 // Middleware to check if user has Media department
 const requireMedia = async (req: any, res: any, next: any) => {
   try {
+    console.log('🔐 Checking Media department for user:', req.user.id);
     const isMedia = await hasMediaDepartment(req.user.id);
+    console.log('✅ Has Media department:', isMedia);
     if (!isMedia) {
+      console.log('❌ Access denied - not in Media department');
       return res.status(403).json({ 
         error: 'Forbidden', 
         message: 'Only Media department members can assign roles' 
       });
     }
+    console.log('✅ Access granted - user has Media department');
     next();
   } catch (error) {
+    console.error('❌ Permission check error:', error);
     res.status(500).json({ message: 'Failed to verify permissions' });
   }
 };
@@ -161,6 +166,11 @@ router.post('/executives', authenticate, requireMedia, async (req: any, res) => 
       );
     }
 
+    // Add user to executive group chat for this department
+    addUserToExecutiveGroup(userId, department).catch(err =>
+      console.error('Failed to add user to executive group:', err)
+    );
+
     res.json({ 
       message: 'Executive added successfully',
       executive: {
@@ -262,6 +272,19 @@ router.delete('/executives/:id', authenticate, requireMedia, async (req: any, re
   try {
     const { id } = req.params;
 
+    // Get user's department before removing executive status
+    const [users] = await pool.execute(
+      'SELECT department FROM users WHERE id = ? AND is_executive = 1',
+      [id]
+    ) as any;
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'Executive not found' });
+    }
+
+    const department = users[0].department;
+
+    // Remove executive status
     await pool.execute(
       `UPDATE users 
        SET is_executive = 0, 
@@ -269,6 +292,13 @@ router.delete('/executives/:id', authenticate, requireMedia, async (req: any, re
        WHERE id = ?`,
       [id]
     );
+
+    // Remove user from executive group chat
+    if (department) {
+      removeUserFromExecutiveGroup(parseInt(id), department).catch(err =>
+        console.error('Failed to remove user from executive group:', err)
+      );
+    }
 
     res.json({ message: 'Executive removed successfully' });
   } catch (error: any) {
@@ -294,6 +324,189 @@ router.delete('/leaders/:id', authenticate, requireMedia, async (req: any, res) 
   } catch (error: any) {
     console.error('Remove leader error:', error);
     res.status(500).json({ message: 'Failed to remove leader' });
+  }
+});
+
+// Get all users with full details (for user management)
+router.get('/users/all', authenticate, requireMedia, async (req: any, res) => {
+  try {
+    console.log('📋 Fetching all users for user management...');
+    const [users]: any = await pool.execute(`
+      SELECT 
+        id, 
+        email, 
+        first_name as firstName, 
+        last_name as lastName, 
+        CONCAT(first_name, ' ', last_name) as fullName,
+        photo,
+        phone,
+        address,
+        gender,
+        role,
+        department,
+        departments,
+        executive_position as executivePosition,
+        is_executive as isExecutive,
+        is_approved as isApproved,
+        date_of_birth as dateOfBirth,
+        created_at as createdAt
+      FROM users 
+      WHERE is_approved = 1
+      ORDER BY first_name, last_name
+    `);
+
+    console.log(`✅ Found ${users.length} approved users`);
+
+    // Parse departments JSON for each user
+    const usersWithParsedDepts = users.map((user: any) => {
+      let userDepartments: string[] = [];
+      if (user.departments) {
+        try {
+          userDepartments = typeof user.departments === 'string' 
+            ? JSON.parse(user.departments) 
+            : user.departments;
+        } catch (e) {
+          userDepartments = [];
+        }
+      }
+      return {
+        ...user,
+        departments: userDepartments
+      };
+    });
+
+    console.log('📤 Sending users response:', usersWithParsedDepts.length);
+    res.json({ users: usersWithParsedDepts });
+  } catch (error: any) {
+    console.error('❌ Get all users error:', error);
+    res.status(500).json({ message: 'Failed to fetch users' });
+  }
+});
+
+// Update user departments
+router.put('/users/:id/departments', authenticate, requireMedia, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { departments } = req.body;
+
+    if (!Array.isArray(departments)) {
+      return res.status(400).json({ message: 'Departments must be an array' });
+    }
+
+    // Get current departments
+    const [currentUser] = await pool.execute(
+      'SELECT departments FROM users WHERE id = ?',
+      [id]
+    ) as any;
+
+    let oldDepartments: string[] = [];
+    if (currentUser[0]?.departments) {
+      try {
+        oldDepartments = typeof currentUser[0].departments === 'string' 
+          ? JSON.parse(currentUser[0].departments) 
+          : currentUser[0].departments;
+      } catch (e) {
+        oldDepartments = [];
+      }
+    }
+
+    // Update departments
+    const departmentsJson = JSON.stringify(departments);
+    await pool.execute(
+      'UPDATE users SET departments = ? WHERE id = ?',
+      [departmentsJson, id]
+    );
+
+    // Sync department groups (async, don't wait)
+    if (departments.length > 0) {
+      syncUserDepartmentGroups(parseInt(id), departments).catch(err =>
+        console.error('Failed to sync department groups:', err)
+      );
+    }
+
+    // Get updated user
+    const [updatedUsers] = await pool.execute(
+      `SELECT 
+        id, email, first_name as firstName, last_name as lastName,
+        CONCAT(first_name, ' ', last_name) as fullName,
+        photo, phone, role, department, departments
+      FROM users WHERE id = ?`,
+      [id]
+    ) as any;
+
+    const updatedUser = updatedUsers[0];
+    let parsedDepartments: string[] = [];
+    if (updatedUser.departments) {
+      try {
+        parsedDepartments = typeof updatedUser.departments === 'string' 
+          ? JSON.parse(updatedUser.departments) 
+          : updatedUser.departments;
+      } catch (e) {
+        parsedDepartments = [];
+      }
+    }
+
+    res.json({
+      message: 'User departments updated successfully',
+      user: {
+        ...updatedUser,
+        departments: parsedDepartments
+      }
+    });
+  } catch (error: any) {
+    console.error('Update user departments error:', error);
+    res.status(500).json({ message: 'Failed to update user departments' });
+  }
+});
+
+// Update user role
+router.put('/users/:id/role', authenticate, requireMedia, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    const validRoles = ['member', 'admin', 'pastor', 'elder', 'deacon', 'secretary', 'media_head', 'media', 'choir'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+
+    await pool.execute(
+      'UPDATE users SET role = ? WHERE id = ?',
+      [role, id]
+    );
+
+    // Get updated user
+    const [updatedUsers] = await pool.execute(
+      `SELECT 
+        id, email, first_name as firstName, last_name as lastName,
+        CONCAT(first_name, ' ', last_name) as fullName,
+        photo, role, departments
+      FROM users WHERE id = ?`,
+      [id]
+    ) as any;
+
+    const updatedUser = updatedUsers[0];
+    let parsedDepartments: string[] = [];
+    if (updatedUser.departments) {
+      try {
+        parsedDepartments = typeof updatedUser.departments === 'string' 
+          ? JSON.parse(updatedUser.departments) 
+          : updatedUser.departments;
+      } catch (e) {
+        parsedDepartments = [];
+      }
+    }
+
+    res.json({
+      message: 'User role updated successfully',
+      user: {
+        ...updatedUser,
+        departments: parsedDepartments
+      }
+    });
+  } catch (error: any) {
+    console.error('Update user role error:', error);
+    res.status(500).json({ message: 'Failed to update user role' });
   }
 });
 

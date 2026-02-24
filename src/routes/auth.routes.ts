@@ -1,11 +1,31 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import pool from '../config/database';
 import { authenticate } from '../middleware/auth.middleware';
 import { sendWelcomeEmail, sendWelcomeSMS } from '../services/notification.service';
-import { syncUserDepartmentGroups } from '../services/chat.service';
+import { syncUserDepartmentGroups, ensureGeneralGroupAndAddMember } from '../services/chat.service';
 import { OAuth2Client } from 'google-auth-library';
+
+// Profile photo upload config
+const profileUploadDir = path.join(__dirname, '../../uploads/profiles');
+if (!fs.existsSync(profileUploadDir)) fs.mkdirSync(profileUploadDir, { recursive: true });
+const profileUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, profileUploadDir),
+    filename: (_req, file, cb) =>
+      cb(null, 'profile-' + Date.now() + path.extname(file.originalname)),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    const ok = /jpeg|jpg|png|gif|webp/.test(path.extname(file.originalname).toLowerCase()) &&
+               /image\//.test(file.mimetype);
+    ok ? cb(null, true) : cb(new Error('Only image files are allowed'));
+  },
+});
 
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -46,9 +66,9 @@ router.post('/register', async (req, res) => {
     const safeLastName = lastName || null;
     const safeGender = gender || null;
 
-    // Insert user with date_of_birth
+    // Insert user with date_of_birth (auto-approved)
     const [result]: any = await pool.execute(
-      'INSERT INTO users (email, password, first_name, last_name, phone, gender, date_of_birth) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO users (email, password, first_name, last_name, phone, gender, date_of_birth, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
       [email, hashedPassword, safeFirstName, safeLastName, phone, safeGender, dateOfBirth]
     );
 
@@ -58,6 +78,11 @@ router.post('/register', async (req, res) => {
       { id: result.insertId, email, role: 'member' },
       jwtSecret,
       { expiresIn: '7d' }
+    );
+
+    // Auto-add new user to General group
+    ensureGeneralGroupAndAddMember(result.insertId).catch(err =>
+      console.error('Failed to add user to General group:', err)
     );
 
     // Send welcome email and SMS immediately
@@ -157,7 +182,8 @@ router.post('/login', async (req, res) => {
         gender: user.gender,
         role: user.role,
         department: user.department,
-        departments: userDepartments
+        departments: userDepartments,
+        photo: user.photo || null,
       }
     });
   } catch (error) {
@@ -225,9 +251,9 @@ router.post('/google', async (req, res) => {
         );
       }
     } else {
-      // Create new user
+      // Create new user (auto-approved)
       const [result]: any = await pool.execute(
-        'INSERT INTO users (email, first_name, last_name, google_id, photo, role) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO users (email, first_name, last_name, google_id, photo, role, is_approved) VALUES (?, ?, ?, ?, ?, ?, 1)',
         [email, firstName, lastName, googleId, photo, 'member']
       );
 
@@ -274,7 +300,7 @@ router.post('/google', async (req, res) => {
 router.get('/me', authenticate, async (req: any, res) => {
   try {
     const [users]: any = await pool.execute(
-      'SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments FROM users WHERE id = ?',
+      'SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments, photo FROM users WHERE id = ?',
       [req.user.id]
     );
 
@@ -308,7 +334,8 @@ router.get('/me', authenticate, async (req: any, res) => {
       gender: user.gender,
       role: user.role,
       department: user.department,
-      departments: userDepartments
+      departments: userDepartments,
+      photo: user.photo || null
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch user' });
@@ -365,7 +392,7 @@ router.put('/profile', authenticate, async (req: any, res) => {
 
     // Fetch updated user
     const [users] = await pool.execute(
-      'SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments FROM users WHERE id = ?',
+      'SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments, photo FROM users WHERE id = ?',
       [userId]
     ) as any;
 
@@ -398,12 +425,31 @@ router.put('/profile', authenticate, async (req: any, res) => {
         gender: user.gender,
         role: user.role,
         department: user.department,
-        departments: userDepartments
+        departments: userDepartments,
+        photo: user.photo || null,
       }
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Failed to update profile' });
+  }
+});
+
+// Upload profile photo
+router.post('/profile/photo', authenticate, profileUpload.single('photo'), async (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided' });
+    }
+    const userId = req.user.id;
+    const photoUrl = `/uploads/profiles/${req.file.filename}`;
+
+    await pool.execute('UPDATE users SET photo = ? WHERE id = ?', [photoUrl, userId]);
+
+    res.json({ message: 'Profile photo updated', photoUrl });
+  } catch (error) {
+    console.error('Upload profile photo error:', error);
+    res.status(500).json({ message: 'Failed to upload photo' });
   }
 });
 

@@ -110,6 +110,97 @@ export function setupSocketIO(httpServer: HTTPServer) {
       console.log(`[WebRTC] User ${userId} left room ${roomId}`);
     });
 
+    // Call notification events
+    socket.on('call:invite', ({ callerId, callerName, callerPhoto, recipientIds, groupId, groupName, callType, roomId }) => {
+      console.log(`[Call] ${callerName} (${callerId}) initiating ${callType} call to group ${groupId}`);
+      console.log(`[Call Debug] Looking for recipients:`, recipientIds);
+      
+      // Debug: Show all connected users
+      const allConnectedUsers = Array.from(io.sockets.sockets.values())
+        .map((s: any) => ({ socketId: s.id, userId: s.userId }))
+        .filter((s) => s.userId);
+      console.log(`[Call Debug] All connected users:`, allConnectedUsers);
+      
+      // Broadcast call invitation to all recipients
+      recipientIds.forEach((recipientId: number) => {
+        const recipientSockets = Array.from(io.sockets.sockets.values()).filter(
+          (s: any) => s.userId === recipientId
+        );
+        
+        console.log(`[Call Debug] Found ${recipientSockets.length} socket(s) for recipient ${recipientId}`);
+        
+        recipientSockets.forEach((recipientSocket) => {
+          console.log(`[Call Debug] Emitting call:incoming to socket ${recipientSocket.id}`);
+          recipientSocket.emit('call:incoming', {
+            callerId,
+            callerName,
+            callerPhoto,
+            groupId,
+            groupName,
+            callType,
+            roomId,
+          });
+        });
+        
+        if (recipientSockets.length === 0) {
+          console.log(`[Call Warning] ⚠️  Recipient ${recipientId} is NOT CONNECTED - notification will not be delivered!`);
+        }
+      });
+    });
+
+    socket.on('call:accept', ({ callerId, acceptorId, acceptorName, roomId }) => {
+      console.log(`[Call] User ${acceptorId} accepted call in room ${roomId}`);
+      
+      // Notify the caller that someone accepted
+      const callerSockets = Array.from(io.sockets.sockets.values()).filter(
+        (s: any) => s.userId === callerId
+      );
+      
+      callerSockets.forEach((callerSocket) => {
+        callerSocket.emit('call:accepted', {
+          acceptorId,
+          acceptorName,
+          roomId,
+        });
+      });
+    });
+
+    socket.on('call:reject', ({ callerId, rejectorId, roomId }) => {
+      console.log(`[Call] User ${rejectorId} rejected call in room ${roomId}`);
+      
+      // Notify the caller
+      const callerSockets = Array.from(io.sockets.sockets.values()).filter(
+        (s: any) => s.userId === callerId
+      );
+      
+      callerSockets.forEach((callerSocket) => {
+        callerSocket.emit('call:rejected', {
+          rejectorId,
+          roomId,
+        });
+      });
+    });
+
+    socket.on('call:end', ({ roomId, userId, recipientIds }) => {
+      console.log(`[Call] Call ended in room ${roomId} by user ${userId}`);
+      
+      // Broadcast to all participants
+      if (recipientIds && recipientIds.length > 0) {
+        recipientIds.forEach((recipientId: number) => {
+          const recipientSockets = Array.from(io.sockets.sockets.values()).filter(
+            (s: any) => s.userId === recipientId
+          );
+          
+          recipientSockets.forEach((recipientSocket) => {
+            recipientSocket.emit('call:ended', { roomId });
+          });
+        });
+      }
+      
+      // Also emit to the room
+      socket.to(roomId).emit('call:ended', { roomId });
+    });
+
     socket.on('disconnect', () => {
       console.log(`[Socket.IO] User ${socket.userId} disconnected`);
     });

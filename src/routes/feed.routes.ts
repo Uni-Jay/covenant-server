@@ -25,7 +25,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     let query = `
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role,
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
         (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
         (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
@@ -81,7 +81,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     const [posts] = await pool.execute(`
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role,
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
         (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
         (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
@@ -98,7 +98,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     const [comments] = await pool.execute(`
       SELECT 
         pc.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM post_comments pc
       JOIN users u ON pc.user_id = u.id
       WHERE pc.post_id = ?
@@ -157,7 +157,7 @@ router.post('/', authenticate, upload.single('media'), async (req: AuthRequest, 
     const [post] = await pool.execute(`
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
       WHERE fp.id = ?
@@ -199,7 +199,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     const [updatedPost] = await pool.execute(`
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
       WHERE fp.id = ?
@@ -291,7 +291,7 @@ router.post('/:id/comment', authenticate, async (req: AuthRequest, res: Response
     const [newComment] = await pool.execute(`
       SELECT 
         pc.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM post_comments pc
       JOIN users u ON pc.user_id = u.id
       WHERE pc.id = ?

@@ -111,30 +111,50 @@ export const permissions = {
 // Check if user has Media department (super admin access)
 export const hasMediaDepartment = async (userId: number): Promise<boolean> => {
   try {
+    console.log('🔍 hasMediaDepartment - Checking for userId:', userId);
     const [users] = await pool.execute(
       'SELECT departments FROM users WHERE id = ?',
       [userId]
     ) as any;
     
-    if (users.length === 0) return false;
+    if (users.length === 0) {
+      console.log('❌ User not found');
+      return false;
+    }
     
     const user = users[0];
+    console.log('📋 User departments (raw):', user.departments, 'Type:', typeof user.departments);
+    
     let departments = [];
     
     if (user.departments) {
       if (Array.isArray(user.departments)) {
         departments = user.departments;
+        console.log('✅ Already array:', departments);
       } else if (typeof user.departments === 'string') {
         try {
           departments = JSON.parse(user.departments);
+          console.log('✅ Parsed JSON:', departments);
         } catch {
           departments = user.departments.split(',').map((d: string) => d.trim());
+          console.log('✅ Split by comma:', departments);
         }
       }
     }
     
-    return departments.some((d: string) => d.toLowerCase() === 'media');
+    console.log('🔍 Final departments array:', departments);
+    
+    // Check if any department includes 'media' (case-insensitive)
+    const hasMedia = departments.some((d: string) => {
+      const matches = d.toLowerCase().trim().includes('media');
+      console.log(`  - Checking "${d}": ${matches}`);
+      return matches;
+    });
+    
+    console.log('✅ Final result - Has Media:', hasMedia);
+    return hasMedia;
   } catch (error) {
+    console.error('❌ Error checking media department:', error);
     return false;
   }
 };

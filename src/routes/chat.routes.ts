@@ -2,7 +2,7 @@ import express, { Response } from 'express';
 import pool from '../config/database';
 import { authenticate } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
-import { syncUserDepartmentGroups } from '../services/chat.service';
+import { syncUserDepartmentGroups, ensureGeneralGroupAndAddMember } from '../services/chat.service';
 
 const router = express.Router();
 
@@ -19,6 +19,11 @@ router.get('/groups', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     console.log(`[Chat Groups] Request from user ${userId}`);
+
+    // Ensure user is in General group
+    ensureGeneralGroupAndAddMember(userId).catch(err =>
+      console.error('[Chat Groups] Failed to ensure general group:', err)
+    );
 
     // First, get user's departments
     const [users] = await pool.execute(
@@ -109,7 +114,7 @@ router.get('/groups/:id', authenticate, async (req: AuthRequest, res: Response) 
     // Get members
     const [members] = await pool.execute(`
       SELECT 
-        u.id, u.first_name, u.last_name, u.profile_image, u.role,
+        u.id, u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
         gm.role as group_role, gm.joined_at
       FROM group_members gm
       JOIN users u ON gm.user_id = u.id
@@ -297,9 +302,9 @@ router.post('/groups', authenticate, async (req: AuthRequest, res: Response) => 
 
     // Create group
     const [result] = await pool.execute(
-      `INSERT INTO chat_groups (name, description, type, department, created_by, is_auto_join)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, description, type, department || null, userId, type === 'department' || type === 'general']
+      `INSERT INTO chat_groups (name, description, type, department, created_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [name, description, type, department || null, userId]
     ) as any;
 
     const groupId = result.insertId;
@@ -411,7 +416,7 @@ router.get('/direct', authenticate, async (req: AuthRequest, res: Response) => {
           WHEN cm.sender_id = ? THEN cm.receiver_id
           ELSE cm.sender_id
         END as other_user_id,
-        u.first_name, u.last_name, u.profile_image, u.role,
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
         (SELECT message FROM chat_messages 
          WHERE (sender_id = ? AND receiver_id = u.id) 
             OR (sender_id = u.id AND receiver_id = ?)
@@ -449,7 +454,7 @@ router.get('/direct/:otherUserId', authenticate, async (req: AuthRequest, res: R
     const [messages] = await pool.execute(`
       SELECT 
         cm.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM chat_messages cm
       JOIN users u ON cm.sender_id = u.id
       WHERE (cm.sender_id = ? AND cm.receiver_id = ?)
@@ -516,7 +521,7 @@ router.post('/direct/:receiverId', authenticate, upload.single('media'), async (
     const [newMessage] = await pool.execute(`
       SELECT 
         cm.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM chat_messages cm
       JOIN users u ON cm.sender_id = u.id
       WHERE cm.id = ?
