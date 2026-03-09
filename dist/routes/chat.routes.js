@@ -205,6 +205,10 @@ router.post('/groups/:id/messages', auth_middleware_1.authenticate, upload_middl
             else
                 mediaType = 'document';
         }
+        else if (req.body.forwardedMediaUrl) {
+            mediaUrl = req.body.forwardedMediaUrl;
+            mediaType = req.body.forwardedMediaType || null;
+        }
         // Insert message
         const [result] = await database_1.default.query(`INSERT INTO chat_messages (sender_id, group_id, message, media_url, media_type)
        VALUES (?, ?, ?, ?, ?)`, [userId, groupId, message || '', mediaUrl, mediaType]);
@@ -672,7 +676,7 @@ router.put('/groups/:id/settings', auth_middleware_1.authenticate, upload_middle
         }
         const setClause = Object.keys(updates).map(key => `${key} = ?`).join(', ');
         const values = [...Object.values(updates), groupId];
-        await database_1.default.query(`UPDATE chat_groups SET ${setClause}, updated_at = NOW() WHERE id = ?`, values);
+        await database_1.default.query(`UPDATE chat_groups SET ${setClause} WHERE id = ?`, values);
         res.json({ message: 'Group updated successfully', updates });
     }
     catch (error) {
