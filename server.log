@@ -1,0 +1,8 @@
+[Socket.IO] Server initialized
+🚀 Server running on http://localhost:5000
+📖 Environment: development
+🔌 Socket.IO server ready
+✅ Birthday checker initialized (runs daily at 8:00 AM)
+✅ MySQL Database connected successfully
+[0mGET /api/health [32m200[0m 5.345 ms - 45[0m
+[Socket.IO] User 5 connected

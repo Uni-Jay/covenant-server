@@ -15,9 +15,9 @@ const transporter = nodemailer.createTransport({
 async function sendBirthdayEmail(email: string, name: string) {
   try {
     await transporter.sendMail({
-      from: `"Word of Covenant Church" <${process.env.EMAIL_USER}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: '🎂 Happy Birthday from Word of Covenant Church!',
+      subject: '🎂 Happy Birthday from Household Of Covenant And Faith Apostolic Ministry!',
       html: `
         <!DOCTYPE html>
         <html>
@@ -44,7 +44,7 @@ async function sendBirthdayEmail(email: string, name: string) {
               <div class="message">
                 <p>Dear ${name},</p>
                 
-                <p>On this special day, the entire Word of Covenant Church family celebrates YOU! 
+                <p>On this special day, the entire Household Of Covenant And Faith Apostolic Ministry family celebrates YOU! 
                 We thank God for the gift of your life and the blessing you are to our community.</p>
                 
                 <div class="verse">
@@ -65,12 +65,12 @@ async function sendBirthdayEmail(email: string, name: string) {
                 make His face shine upon you, and give you peace.</p>
                 
                 <p style="margin-top: 30px;"><strong>With love and prayers,</strong><br>
-                Your Word of Covenant Church Family 💜</p>
+                Your Household Of Covenant And Faith Apostolic Ministry Family 💜</p>
               </div>
               
               <div class="footer">
-                <p>📍 Word of Covenant Church<br>
-                "Light of the World" - John 8:12</p>
+                <p>📍 Household Of Covenant And Faith Apostolic Ministry<br>
+                "Household of the living God" - 1 Timothy 3:15</p>
               </div>
             </div>
           </div>
@@ -93,7 +93,7 @@ async function sendBirthdaySMS(phone: string, name: string) {
   // const twilio = require('twilio');
   // const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
   // await client.messages.create({
-  //   body: `🎉 Happy Birthday ${name}! May God bless you abundantly on your special day. - Word of Covenant Church 💜`,
+  //   body: `🎉 Happy Birthday ${name}! May God bless you abundantly on your special day. - Household Of Covenant And Faith Apostolic Ministry 💜`,
   //   from: process.env.TWILIO_PHONE_NUMBER,
   //   to: phone
   // });

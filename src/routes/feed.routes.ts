@@ -117,8 +117,8 @@ router.post('/', authenticate, upload.single('media'), async (req: AuthRequest, 
     const { content, postType = 'general', taggedUsers } = req.body;
     const userId = req.user!.id;
 
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Content is required' });
+    if (!content && !req.file) {
+      return res.status(400).json({ error: 'Content or media is required' });
     }
 
     let mediaUrl = null;
@@ -126,7 +126,7 @@ router.post('/', authenticate, upload.single('media'), async (req: AuthRequest, 
 
     // Everyone can upload media in feed posts
     if (req.file) {
-      mediaUrl = `/uploads/${req.file.filename}`;
+      mediaUrl = `/uploads/feed/${req.file.filename}`;
       mediaType = req.file.mimetype.startsWith('image/') ? 'image' : 'video';
     }
 

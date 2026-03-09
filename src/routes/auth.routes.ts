@@ -103,7 +103,7 @@ router.post('/register', async (req, res) => {
     }
 
     res.status(201).json({
-      message: 'Welcome to Word of Covenant Church! Check your email and phone for a welcome message.',
+      message: 'Welcome to Household Of Covenant And Faith Apostolic Ministry! Check your email and phone for a welcome message.',
       token,
       user: { 
         id: result.insertId, 

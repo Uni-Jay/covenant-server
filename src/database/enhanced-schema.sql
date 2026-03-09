@@ -1,4 +1,4 @@
--- Enhanced Word of Covenant Church Database Schema with All Features
+-- Enhanced Household Of Covenant And Faith Apostolic Ministry Database Schema with All Features
 
 USE word_of_covenant_db;
 

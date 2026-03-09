@@ -6,11 +6,30 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const multer_1 = __importDefault(require("multer"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const database_1 = __importDefault(require("../config/database"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const notification_service_1 = require("../services/notification.service");
 const chat_service_1 = require("../services/chat.service");
 const google_auth_library_1 = require("google-auth-library");
+// Profile photo upload config
+const profileUploadDir = path_1.default.join(__dirname, '../../uploads/profiles');
+if (!fs_1.default.existsSync(profileUploadDir))
+    fs_1.default.mkdirSync(profileUploadDir, { recursive: true });
+const profileUpload = (0, multer_1.default)({
+    storage: multer_1.default.diskStorage({
+        destination: (_req, _file, cb) => cb(null, profileUploadDir),
+        filename: (_req, file, cb) => cb(null, 'profile-' + Date.now() + path_1.default.extname(file.originalname)),
+    }),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: (_req, file, cb) => {
+        const ok = /jpeg|jpg|png|gif|webp/.test(path_1.default.extname(file.originalname).toLowerCase()) &&
+            /image\//.test(file.mimetype);
+        ok ? cb(null, true) : cb(new Error('Only image files are allowed'));
+    },
+});
 const router = (0, express_1.Router)();
 const googleClient = new google_auth_library_1.OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Register
@@ -38,11 +57,13 @@ router.post('/register', async (req, res) => {
         const safeFirstName = firstName || null;
         const safeLastName = lastName || null;
         const safeGender = gender || null;
-        // Insert user with date_of_birth
-        const [result] = await database_1.default.execute('INSERT INTO users (email, password, first_name, last_name, phone, gender, date_of_birth) VALUES (?, ?, ?, ?, ?, ?, ?)', [email, hashedPassword, safeFirstName, safeLastName, phone, safeGender, dateOfBirth]);
+        // Insert user with date_of_birth (auto-approved)
+        const [result] = await database_1.default.execute('INSERT INTO users (email, password, first_name, last_name, phone, gender, date_of_birth, is_approved) VALUES (?, ?, ?, ?, ?, ?, ?, 1)', [email, hashedPassword, safeFirstName, safeLastName, phone, safeGender, dateOfBirth]);
         // Generate token
         const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
         const token = jsonwebtoken_1.default.sign({ id: result.insertId, email, role: 'member' }, jwtSecret, { expiresIn: '7d' });
+        // Auto-add new user to General group
+        (0, chat_service_1.ensureGeneralGroupAndAddMember)(result.insertId).catch(err => console.error('Failed to add user to General group:', err));
         // Send welcome email and SMS immediately
         const fullName = safeFirstName || 'Friend';
         // Send welcome email
@@ -54,7 +75,7 @@ router.post('/register', async (req, res) => {
             (0, notification_service_1.sendWelcomeSMS)(phone, fullName, 'member').catch(err => console.error('Failed to send welcome SMS:', err));
         }
         res.status(201).json({
-            message: 'Welcome to Word of Covenant Church! Check your email and phone for a welcome message.',
+            message: 'Welcome to Household Of Covenant And Faith Apostolic Ministry! Check your email and phone for a welcome message.',
             token,
             user: {
                 id: result.insertId,
@@ -121,7 +142,8 @@ router.post('/login', async (req, res) => {
                 gender: user.gender,
                 role: user.role,
                 department: user.department,
-                departments: userDepartments
+                departments: userDepartments,
+                photo: user.photo || null,
             }
         });
     }
@@ -178,8 +200,8 @@ router.post('/google', async (req, res) => {
             }
         }
         else {
-            // Create new user
-            const [result] = await database_1.default.execute('INSERT INTO users (email, first_name, last_name, google_id, photo, role) VALUES (?, ?, ?, ?, ?, ?)', [email, firstName, lastName, googleId, photo, 'member']);
+            // Create new user (auto-approved)
+            const [result] = await database_1.default.execute('INSERT INTO users (email, first_name, last_name, google_id, photo, role, is_approved) VALUES (?, ?, ?, ?, ?, ?, 1)', [email, firstName, lastName, googleId, photo, 'member']);
             userId = result.insertId;
             // Send welcome notifications (async)
             const fullName = firstName || 'Friend';
@@ -213,7 +235,7 @@ router.post('/google', async (req, res) => {
 // Get current user
 router.get('/me', auth_middleware_1.authenticate, async (req, res) => {
     try {
-        const [users] = await database_1.default.execute('SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments FROM users WHERE id = ?', [req.user.id]);
+        const [users] = await database_1.default.execute('SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments, photo FROM users WHERE id = ?', [req.user.id]);
         if (users.length === 0) {
             return res.status(404).json({ message: 'User not found' });
         }
@@ -243,7 +265,8 @@ router.get('/me', auth_middleware_1.authenticate, async (req, res) => {
             gender: user.gender,
             role: user.role,
             department: user.department,
-            departments: userDepartments
+            departments: userDepartments,
+            photo: user.photo || null
         });
     }
     catch (error) {
@@ -287,7 +310,7 @@ router.put('/profile', auth_middleware_1.authenticate, async (req, res) => {
             (0, chat_service_1.syncUserDepartmentGroups)(userId, departmentsArray).catch(err => console.error('Failed to sync department groups:', err));
         }
         // Fetch updated user
-        const [users] = await database_1.default.execute('SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments FROM users WHERE id = ?', [userId]);
+        const [users] = await database_1.default.execute('SELECT id, email, first_name, last_name, phone, address, gender, role, department, departments, photo FROM users WHERE id = ?', [userId]);
         const user = users[0];
         // Safely parse departments
         let userDepartments = [];
@@ -317,13 +340,30 @@ router.put('/profile', auth_middleware_1.authenticate, async (req, res) => {
                 gender: user.gender,
                 role: user.role,
                 department: user.department,
-                departments: userDepartments
+                departments: userDepartments,
+                photo: user.photo || null,
             }
         });
     }
     catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Failed to update profile' });
+    }
+});
+// Upload profile photo
+router.post('/profile/photo', auth_middleware_1.authenticate, profileUpload.single('photo'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'No image file provided' });
+        }
+        const userId = req.user.id;
+        const photoUrl = `/uploads/profiles/${req.file.filename}`;
+        await database_1.default.execute('UPDATE users SET photo = ? WHERE id = ?', [photoUrl, userId]);
+        res.json({ message: 'Profile photo updated', photoUrl });
+    }
+    catch (error) {
+        console.error('Upload profile photo error:', error);
+        res.status(500).json({ message: 'Failed to upload photo' });
     }
 });
 // Get all users (for tagging functionality)

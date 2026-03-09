@@ -1,7 +1,7 @@
 {
   "name": "word-of-covenant-server",
   "version": "1.0.0",
-  "description": "Backend API for Word of Covenant Church",
+  "description": "Backend API for Household Of Covenant And Faith Apostolic Ministry",
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon src/index.ts",

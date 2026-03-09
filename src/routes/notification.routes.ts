@@ -120,7 +120,7 @@ router.post('/send-event-reminder', authenticate, async (req: any, res) => {
           <p><strong>Time:</strong> ${event.time || 'TBD'}</p>
           <p><strong>Location:</strong> ${event.location || 'Church premises'}</p>
           <p>We look forward to seeing you!</p>
-          <p>God bless,<br/>Word of Covenant Church</p>
+          <p>God bless,<br/>Household Of Covenant And Faith Apostolic Ministry</p>
         `;
 
         await connection.execute(
@@ -185,7 +185,7 @@ router.post('/send-event-reminder', authenticate, async (req: any, res) => {
           <p><strong>Time:</strong> ${event.time || 'TBD'}</p>
           <p><strong>Location:</strong> ${event.location || 'Church premises'}</p>
           <p>We would love to see you again!</p>
-          <p>God bless,<br/>Word of Covenant Church</p>
+          <p>God bless,<br/>Household Of Covenant And Faith Apostolic Ministry</p>
         `;
 
         await connection.execute(
@@ -330,7 +330,7 @@ router.post('/send-to-role', authenticate, requirePermission('manage_events'), a
           <h2>Notification from Word of Covenant</h2>
           <p>Dear ${user.name},</p>
           <p>${message}</p>
-          <p>God bless,<br/>Word of Covenant Church</p>
+          <p>God bless,<br/>Household Of Covenant And Faith Apostolic Ministry</p>
         `;
 
         await pool.execute(

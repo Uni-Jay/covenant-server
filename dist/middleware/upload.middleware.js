@@ -19,7 +19,8 @@ const storage = multer_1.default.diskStorage({
             req.baseUrl.includes('event') ? 'events' :
                 req.baseUrl.includes('gallery') ? 'gallery' :
                     req.baseUrl.includes('blog') ? 'blog' :
-                        req.baseUrl.includes('chat') ? 'chat' : 'others';
+                        req.baseUrl.includes('feed') ? 'feed' :
+                            req.baseUrl.includes('chat') ? 'chat' : 'others';
         const targetDir = path_1.default.join(uploadDir, subDir);
         if (!fs_1.default.existsSync(targetDir)) {
             fs_1.default.mkdirSync(targetDir, { recursive: true });
@@ -33,14 +34,30 @@ const storage = multer_1.default.diskStorage({
 });
 // File filter
 const fileFilter = (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|pdf|mp3|mp4|wav|mpeg/;
-    const extname = allowedTypes.test(path_1.default.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
+    // Allow all common image, video, audio, and document types
+    const allowedExtensions = /\.(jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv|webm|mp3|wav|m4a|aac|ogg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip|rar)$/i;
+    const allowedMimePrefix = /^(image|video|audio)\//;
+    const allowedDocMimes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain',
+        'text/csv',
+        'application/zip',
+        'application/x-rar-compressed',
+        'application/octet-stream',
+    ];
+    const extAllowed = allowedExtensions.test(path_1.default.extname(file.originalname));
+    const mimeAllowed = allowedMimePrefix.test(file.mimetype) || allowedDocMimes.includes(file.mimetype);
+    if (extAllowed || mimeAllowed) {
         cb(null, true);
     }
     else {
-        cb(new Error('Invalid file type'));
+        cb(new Error(`File type not allowed: ${path_1.default.extname(file.originalname)} (${file.mimetype})`));
     }
 };
 exports.upload = (0, multer_1.default)({

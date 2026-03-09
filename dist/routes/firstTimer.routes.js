@@ -156,7 +156,7 @@ router.post('/check-in', async (req, res) => {
             await connection.execute('UPDATE first_timers SET is_converted_to_member = TRUE, converted_user_id = ? WHERE id = ?', [userId, firstTimer.id]);
             await connection.commit();
             return res.json({
-                message: 'Congratulations! You are now a member of Word of Covenant Church!',
+                message: 'Congratulations! You are now a member of Household Of Covenant And Faith Apostolic Ministry!',
                 promoted: true,
                 attendanceCount: newCount,
                 username,

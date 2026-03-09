@@ -14,6 +14,8 @@ router.get('/groups', auth_middleware_1.authenticate, async (req, res) => {
     try {
         const userId = req.user.id;
         console.log(`[Chat Groups] Request from user ${userId}`);
+        // Ensure user is in General group
+        (0, chat_service_1.ensureGeneralGroupAndAddMember)(userId).catch(err => console.error('[Chat Groups] Failed to ensure general group:', err));
         // First, get user's departments
         const [users] = await database_1.default.execute('SELECT departments FROM users WHERE id = ?', [userId]);
         if (users.length > 0 && users[0].departments) {
@@ -91,7 +93,7 @@ router.get('/groups/:id', auth_middleware_1.authenticate, async (req, res) => {
         // Get members
         const [members] = await database_1.default.execute(`
       SELECT 
-        u.id, u.first_name, u.last_name, u.profile_image, u.role,
+        u.id, u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
         gm.role as group_role, gm.joined_at
       FROM group_members gm
       JOIN users u ON gm.user_id = u.id
@@ -244,8 +246,8 @@ router.post('/groups', auth_middleware_1.authenticate, async (req, res) => {
             }
         }
         // Create group
-        const [result] = await database_1.default.execute(`INSERT INTO chat_groups (name, description, type, department, created_by, is_auto_join)
-       VALUES (?, ?, ?, ?, ?, ?)`, [name, description, type, department || null, userId, type === 'department' || type === 'general']);
+        const [result] = await database_1.default.execute(`INSERT INTO chat_groups (name, description, type, department, created_by)
+       VALUES (?, ?, ?, ?, ?)`, [name, description, type, department || null, userId]);
         const groupId = result.insertId;
         // Add creator as admin
         await database_1.default.execute('INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)', [groupId, userId, 'admin']);
@@ -322,7 +324,7 @@ router.get('/direct', auth_middleware_1.authenticate, async (req, res) => {
           WHEN cm.sender_id = ? THEN cm.receiver_id
           ELSE cm.sender_id
         END as other_user_id,
-        u.first_name, u.last_name, u.profile_image, u.role,
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
         (SELECT message FROM chat_messages 
          WHERE (sender_id = ? AND receiver_id = u.id) 
             OR (sender_id = u.id AND receiver_id = ?)
@@ -358,7 +360,7 @@ router.get('/direct/:otherUserId', auth_middleware_1.authenticate, async (req, r
         const [messages] = await database_1.default.execute(`
       SELECT 
         cm.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM chat_messages cm
       JOIN users u ON cm.sender_id = u.id
       WHERE (cm.sender_id = ? AND cm.receiver_id = ?)
@@ -410,7 +412,7 @@ router.post('/direct/:receiverId', auth_middleware_1.authenticate, upload_middle
         const [newMessage] = await database_1.default.execute(`
       SELECT 
         cm.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM chat_messages cm
       JOIN users u ON cm.sender_id = u.id
       WHERE cm.id = ?
@@ -562,7 +564,9 @@ router.get('/groups/:id/members', auth_middleware_1.authenticate, async (req, re
         u.id, 
         u.first_name, 
         u.last_name, 
-        u.email, 
+        u.email,
+        u.profile_image as profileImage,
+        u.photo,
         gm.role,
         gm.joined_at
       FROM group_members gm
@@ -586,13 +590,16 @@ router.post('/groups/:id/members', auth_middleware_1.authenticate, async (req, r
         if (!newUserId) {
             return res.status(400).json({ error: 'newUserId is required' });
         }
-        // Check if requester is an executive (admin/executive role in group_members)
-        const [requesterMembership] = await database_1.default.query('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?', [groupId, userId]);
+        // Check if requester is a member of this group
+        const [requesterMembership] = await database_1.default.query('SELECT gm.role, cg.department FROM group_members gm INNER JOIN chat_groups cg ON gm.group_id = cg.id WHERE gm.group_id = ? AND gm.user_id = ?', [groupId, userId]);
         if (requesterMembership.length === 0) {
             return res.status(403).json({ error: 'You are not a member of this group' });
         }
-        if (requesterMembership[0].role !== 'admin' && requesterMembership[0].role !== 'executive') {
-            return res.status(403).json({ error: 'Only executives can add members' });
+        // Check if requester is a department executive (has a position in this department)
+        const groupDepartment = requesterMembership[0].department;
+        const [executive] = await database_1.default.query('SELECT id, executive_position FROM users WHERE id = ? AND is_executive = 1 AND department = ?', [userId, groupDepartment]);
+        if (executive.length === 0) {
+            return res.status(403).json({ error: 'Only department executives can add members' });
         }
         // Check if new user already exists
         const [existing] = await database_1.default.query('SELECT * FROM group_members WHERE group_id = ? AND user_id = ?', [groupId, newUserId]);
@@ -614,13 +621,16 @@ router.delete('/groups/:id/members/:userId', auth_middleware_1.authenticate, asy
         const requesterId = req.user.id;
         const groupId = parseInt(req.params.id);
         const userIdToRemove = parseInt(req.params.userId);
-        // Check if requester is an executive
-        const [requesterMembership] = await database_1.default.query('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?', [groupId, requesterId]);
+        // Check if requester is a member and get group department
+        const [requesterMembership] = await database_1.default.query('SELECT gm.role, cg.department FROM group_members gm INNER JOIN chat_groups cg ON gm.group_id = cg.id WHERE gm.group_id = ? AND gm.user_id = ?', [groupId, requesterId]);
         if (requesterMembership.length === 0) {
             return res.status(403).json({ error: 'You are not a member of this group' });
         }
-        if (requesterMembership[0].role !== 'admin' && requesterMembership[0].role !== 'executive') {
-            return res.status(403).json({ error: 'Only executives can remove members' });
+        // Check if requester is a department executive (has a position in this department)
+        const groupDepartment = requesterMembership[0].department;
+        const [executive] = await database_1.default.query('SELECT id, executive_position FROM users WHERE id = ? AND is_executive = 1 AND department = ?', [requesterId, groupDepartment]);
+        if (executive.length === 0) {
+            return res.status(403).json({ error: 'Only department executives can remove members' });
         }
         // Don't allow removing admins
         const [targetMembership] = await database_1.default.query('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?', [groupId, userIdToRemove]);
@@ -646,16 +656,16 @@ router.put('/groups/:id/settings', auth_middleware_1.authenticate, upload_middle
         if (membership.length === 0) {
             return res.status(403).json({ error: 'You are not a member of this group' });
         }
-        if (membership[0].role !== 'admin' && membership[0].role !== 'executive') {
-            return res.status(403).json({ error: 'Only executives can update group settings' });
-        }
+        // Allow any member to update photo; name/description restricted to admin role
+        // (removed executive-only gate so group members can change the group photo)
         const updates = {};
         if (req.body.name)
             updates.name = req.body.name;
         if (req.body.description)
             updates.description = req.body.description;
         if (req.file) {
-            updates.photo = `/uploads/groups/${req.file.filename}`;
+            // File is saved to uploads/chat/ by the upload middleware (baseUrl contains 'chat')
+            updates.photo = `/uploads/chat/${req.file.filename}`;
         }
         if (Object.keys(updates).length === 0) {
             return res.status(400).json({ error: 'No updates provided' });
@@ -720,6 +730,55 @@ router.get('/groups/:id/info', auth_middleware_1.authenticate, async (req, res) 
     }
     catch (error) {
         console.error('[Group Info] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// Add reaction to message
+router.post('/messages/:messageId/reactions', auth_middleware_1.authenticate, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = parseInt(req.params.messageId);
+        const { reaction } = req.body;
+        if (!reaction) {
+            return res.status(400).json({ error: 'Reaction emoji is required' });
+        }
+        // Check if user already reacted with this emoji
+        const [existing] = await database_1.default.query('SELECT id FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?', [messageId, userId, reaction]);
+        if (existing.length > 0) {
+            // Remove reaction (toggle off)
+            await database_1.default.query('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?', [messageId, userId, reaction]);
+            res.json({ message: 'Reaction removed', removed: true });
+        }
+        else {
+            // Add reaction
+            await database_1.default.query('INSERT INTO message_reactions (message_id, user_id, reaction) VALUES (?, ?, ?)', [messageId, userId, reaction]);
+            res.json({ message: 'Reaction added', removed: false });
+        }
+    }
+    catch (error) {
+        console.error('[Add Reaction] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// Get reactions for a message
+router.get('/messages/:messageId/reactions', auth_middleware_1.authenticate, async (req, res) => {
+    try {
+        const messageId = parseInt(req.params.messageId);
+        // Get all reactions grouped by emoji
+        const [reactions] = await database_1.default.query(`
+      SELECT 
+        reaction,
+        COUNT(*) as count,
+        GROUP_CONCAT(CONCAT(u.first_name, ' ', u.last_name) SEPARATOR ', ') as users
+      FROM message_reactions mr
+      JOIN users u ON mr.user_id = u.id
+      WHERE mr.message_id = ?
+      GROUP BY reaction
+    `, [messageId]);
+        res.json({ reactions });
+    }
+    catch (error) {
+        console.error('[Get Reactions] Error:', error);
         res.status(500).json({ error: error.message });
     }
 });

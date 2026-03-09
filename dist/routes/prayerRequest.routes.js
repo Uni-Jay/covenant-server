@@ -29,7 +29,10 @@ router.get('/all', auth_middleware_1.authenticate, async (req, res) => {
                     }
                 }
             }
-            const hasAccess = userDepartments.some(dept => dept.toLowerCase().includes('media') || dept.toLowerCase().includes('prayer'));
+            const hasAccess = userDepartments.some(dept => {
+                const deptName = dept.toLowerCase().trim();
+                return deptName.includes('media') || deptName.includes('prayer');
+            });
             if (!hasAccess) {
                 return res.status(403).json({ message: 'Access denied' });
             }
@@ -90,7 +93,10 @@ router.patch('/:id', auth_middleware_1.authenticate, async (req, res) => {
                     }
                 }
             }
-            const hasAccess = userDepartments.some(dept => dept.toLowerCase().includes('media') || dept.toLowerCase().includes('prayer'));
+            const hasAccess = userDepartments.some(dept => {
+                const deptName = dept.toLowerCase().trim();
+                return deptName.includes('media') || deptName.includes('prayer');
+            });
             if (!hasAccess) {
                 return res.status(403).json({ message: 'Access denied' });
             }

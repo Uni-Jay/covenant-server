@@ -1,4 +1,4 @@
--- Word of Covenant Church Database Schema
+-- Household Of Covenant And Faith Apostolic Ministry Database Schema
 
 CREATE DATABASE IF NOT EXISTS word_of_covenant_db;
 USE word_of_covenant_db;

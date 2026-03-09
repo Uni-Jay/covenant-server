@@ -15,6 +15,7 @@ const storage = multer.diskStorage({
                    req.baseUrl.includes('event') ? 'events' :
                    req.baseUrl.includes('gallery') ? 'gallery' :
                    req.baseUrl.includes('blog') ? 'blog' :
+                   req.baseUrl.includes('feed') ? 'feed' :
                    req.baseUrl.includes('chat') ? 'chat' : 'others';
     
     const targetDir = path.join(uploadDir, subDir);
@@ -32,14 +33,31 @@ const storage = multer.diskStorage({
 
 // File filter
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = /jpeg|jpg|png|gif|pdf|mp3|mp4|wav|mpeg/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  // Allow all common image, video, audio, and document types
+  const allowedExtensions = /\.(jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv|webm|mp3|wav|m4a|aac|ogg|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|zip|rar)$/i;
+  const allowedMimePrefix = /^(image|video|audio)\//;
+  const allowedDocMimes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain',
+    'text/csv',
+    'application/zip',
+    'application/x-rar-compressed',
+    'application/octet-stream',
+  ];
 
-  if (extname && mimetype) {
+  const extAllowed = allowedExtensions.test(path.extname(file.originalname));
+  const mimeAllowed = allowedMimePrefix.test(file.mimetype) || allowedDocMimes.includes(file.mimetype);
+
+  if (extAllowed || mimeAllowed) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type'));
+    cb(new Error(`File type not allowed: ${path.extname(file.originalname)} (${file.mimetype})`));
   }
 };
 

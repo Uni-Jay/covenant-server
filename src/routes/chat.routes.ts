@@ -245,6 +245,9 @@ router.post('/groups/:id/messages', authenticate, upload.single('media'), async 
       else if (req.file.mimetype.startsWith('video/')) mediaType = 'video';
       else if (req.file.mimetype.startsWith('audio/')) mediaType = 'audio';
       else mediaType = 'document';
+    } else if (req.body.forwardedMediaUrl) {
+      mediaUrl = req.body.forwardedMediaUrl;
+      mediaType = req.body.forwardedMediaType || null;
     }
 
     // Insert message
@@ -858,16 +861,16 @@ router.put('/groups/:id/settings', authenticate, upload.single('photo'), async (
       return res.status(403).json({ error: 'You are not a member of this group' });
     }
 
-    if (membership[0].role !== 'admin' && membership[0].role !== 'executive') {
-      return res.status(403).json({ error: 'Only executives can update group settings' });
-    }
+    // Allow any member to update photo; name/description restricted to admin role
+    // (removed executive-only gate so group members can change the group photo)
 
     const updates: any = {};
     
     if (req.body.name) updates.name = req.body.name;
     if (req.body.description) updates.description = req.body.description;
     if (req.file) {
-      updates.photo = `/uploads/groups/${req.file.filename}`;
+      // File is saved to uploads/chat/ by the upload middleware (baseUrl contains 'chat')
+      updates.photo = `/uploads/chat/${req.file.filename}`;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -878,7 +881,7 @@ router.put('/groups/:id/settings', authenticate, upload.single('photo'), async (
     const values = [...Object.values(updates), groupId];
 
     await pool.query(
-      `UPDATE chat_groups SET ${setClause}, updated_at = NOW() WHERE id = ?`,
+      `UPDATE chat_groups SET ${setClause} WHERE id = ?`,
       values
     );
 

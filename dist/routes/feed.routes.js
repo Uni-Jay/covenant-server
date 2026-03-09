@@ -19,7 +19,9 @@ router.get('/', auth_middleware_1.authenticate, async (req, res) => {
         let query = `
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role,
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
+        (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
+        (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
@@ -62,7 +64,9 @@ router.get('/:id', auth_middleware_1.authenticate, async (req, res) => {
         const [posts] = await database_1.default.execute(`
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role,
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role,
+        (SELECT COUNT(*) FROM post_likes WHERE post_id = fp.id) as likes_count,
+        (SELECT COUNT(*) FROM post_comments WHERE post_id = fp.id) as comments_count,
         (SELECT COUNT(*) > 0 FROM post_likes WHERE post_id = fp.id AND user_id = ?) as user_liked
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
@@ -75,7 +79,7 @@ router.get('/:id', auth_middleware_1.authenticate, async (req, res) => {
         const [comments] = await database_1.default.execute(`
       SELECT 
         pc.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM post_comments pc
       JOIN users u ON pc.user_id = u.id
       WHERE pc.post_id = ?
@@ -92,14 +96,14 @@ router.post('/', auth_middleware_1.authenticate, upload_middleware_1.upload.sing
     try {
         const { content, postType = 'general', taggedUsers } = req.body;
         const userId = req.user.id;
-        if (!content || content.trim().length === 0) {
-            return res.status(400).json({ error: 'Content is required' });
+        if (!content && !req.file) {
+            return res.status(400).json({ error: 'Content or media is required' });
         }
         let mediaUrl = null;
         let mediaType = null;
         // Everyone can upload media in feed posts
         if (req.file) {
-            mediaUrl = `/uploads/${req.file.filename}`;
+            mediaUrl = `/uploads/feed/${req.file.filename}`;
             mediaType = req.file.mimetype.startsWith('image/') ? 'image' : 'video';
         }
         const [result] = await database_1.default.execute(`INSERT INTO feed_posts (user_id, content, media_url, media_type, post_type) 
@@ -121,7 +125,7 @@ router.post('/', auth_middleware_1.authenticate, upload_middleware_1.upload.sing
         const [post] = await database_1.default.execute(`
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
       WHERE fp.id = ?
@@ -151,7 +155,7 @@ router.put('/:id', auth_middleware_1.authenticate, async (req, res) => {
         const [updatedPost] = await database_1.default.execute(`
       SELECT 
         fp.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM feed_posts fp
       JOIN users u ON fp.user_id = u.id
       WHERE fp.id = ?
@@ -219,7 +223,7 @@ router.post('/:id/comment', auth_middleware_1.authenticate, async (req, res) => 
         const [newComment] = await database_1.default.execute(`
       SELECT 
         pc.*,
-        u.first_name, u.last_name, u.profile_image, u.role
+        u.first_name, u.last_name, COALESCE(u.photo, u.profile_image) as profile_image, u.role
       FROM post_comments pc
       JOIN users u ON pc.user_id = u.id
       WHERE pc.id = ?

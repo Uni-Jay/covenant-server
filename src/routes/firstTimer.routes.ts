@@ -189,7 +189,7 @@ router.post('/check-in', async (req, res) => {
       await connection.commit();
 
       return res.json({ 
-        message: 'Congratulations! You are now a member of Word of Covenant Church!',
+        message: 'Congratulations! You are now a member of Household Of Covenant And Faith Apostolic Ministry!',
         promoted: true,
         attendanceCount: newCount,
         username,
