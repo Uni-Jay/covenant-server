@@ -1,5 +1,5 @@
 {
-  "name": "word-of-covenant-server",
+  "name": "covenant-server",
   "version": "1.0.0",
   "description": "Backend API for Household Of Covenant And Faith Apostolic Ministry",
   "main": "dist/index.js",
@@ -45,6 +45,6 @@
     "@types/node": "^20.11.10",
     "nodemon": "^3.0.3",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.9.3"
   }
 }
