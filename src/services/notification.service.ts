@@ -19,15 +19,15 @@ export const sendWelcomeEmail = async (
 ) => {
   try {
     const subject = userType === 'first_timer' 
-      ? '🙏 Welcome to Word of Covenant!' 
-      : '✨ Welcome to Word of Covenant Family!';
+      ? '🙏 Welcome to Household Of Covenant And Faith Apostolic Ministry!' 
+      : '✨ Welcome to Household Of Covenant And Faith Apostolic Ministry Family!';
 
     const htmlContent = userType === 'first_timer' 
       ? getFirstTimerWelcomeEmail(firstName)
       : getMemberWelcomeEmail(firstName);
 
     await transporter.sendMail({
-      from: `"Word of Covenant" <${process.env.EMAIL_USER || 'noreply@wordofcovenant.org'}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${process.env.EMAIL_USER || 'noreply@hocfam.org'}>`,
       to,
       subject,
       html: htmlContent,
@@ -50,8 +50,8 @@ export const sendWelcomeSMS = async (
     // Using Twilio or similar SMS service
     // For now, just log (implement actual SMS service as needed)
     const message = userType === 'first_timer'
-      ? `Hi ${firstName}! 🙏 Welcome to Word of Covenant. We're blessed to have you! Download our app to stay connected. God bless you!`
-      : `Welcome ${firstName}! ✨ You're now part of the Word of Covenant family. Check your email for next steps. Blessings!`;
+      ? `Hi ${firstName}! 🙏 Welcome to Household Of Covenant And Faith Apostolic Ministry. We're blessed to have you! Download our app to stay connected. God bless you!`
+      : `Welcome ${firstName}! ✨ You're now part of the Household Of Covenant And Faith Apostolic Ministry family. Check your email for next steps. Blessings!`;
 
     console.log(`📱 SMS to ${phone}: ${message}`);
     
@@ -93,7 +93,7 @@ const getMemberWelcomeEmail = (firstName: string) => `
     <div class="content">
       <h2>Hello ${firstName}! 🙏</h2>
       
-      <p>We're absolutely thrilled to welcome you to the <strong>Word of Covenant</strong> family! Your registration is complete, and you're now part of a vibrant community of believers.</p>
+      <p>We're absolutely thrilled to welcome you to the <strong>Household Of Covenant And Faith Apostolic Ministry</strong> family! Your registration is complete, and you're now part of a vibrant community of believers.</p>
       
       <h3>🎉 What's Next?</h3>
       <ul>
@@ -112,16 +112,16 @@ const getMemberWelcomeEmail = (firstName: string) => `
       <h3>📞 Need Help?</h3>
       <p>Our team is here for you!</p>
       <ul>
-        <li>Email: <a href="mailto:info@wordofcovenant.org">info@wordofcovenant.org</a></li>
+        <li>Email: <a href="mailto:info@hocfam.org">info@hocfam.org</a></li>
         <li>Phone: Call during office hours</li>
         <li>Visit: Check our website for church location</li>
       </ul>
       
       <p><strong>God bless you abundantly!</strong></p>
-      <p>The Word of Covenant Team</p>
+      <p>The Household Of Covenant And Faith Apostolic Ministry Team</p>
     </div>
     <div class="footer">
-      <p>© ${new Date().getFullYear()} Word of Covenant. All rights reserved.</p>
+      <p>© ${new Date().getFullYear()} Household Of Covenant And Faith Apostolic Ministry. All rights reserved.</p>
       <p>You're receiving this because you registered on our platform.</p>
     </div>
   </div>
@@ -150,7 +150,7 @@ const getFirstTimerWelcomeEmail = (firstName: string) => `
     <div class="content">
       <h2>Hello ${firstName}!</h2>
       
-      <p>Thank you for visiting <strong>Word of Covenant</strong>! We're absolutely blessed that you chose to worship with us. Your presence made our service even more special.</p>
+      <p>Thank you for visiting <strong>Household Of Covenant And Faith Apostolic Ministry</strong>! We're absolutely blessed that you chose to worship with us. Your presence made our service even more special.</p>
       
       <h3>🎊 We'd Love to See You Again!</h3>
       <p>Here's what you can expect when you visit us:</p>
@@ -180,15 +180,15 @@ const getFirstTimerWelcomeEmail = (firstName: string) => `
       </ul>
       
       <p><strong>Questions? We're Here!</strong><br>
-      Email: <a href="mailto:info@wordofcovenant.org">info@wordofcovenant.org</a></p>
+      Email: <a href="mailto:info@hocfam.org">info@hocfam.org</a></p>
       
       <p><em>"For where two or three gather in my name, there am I with them." - Matthew 18:20</em></p>
       
       <p><strong>See you soon!</strong><br>
-      Pastor & The Word of Covenant Family</p>
+      Pastor & The Household Of Covenant And Faith Apostolic Ministry Family</p>
     </div>
     <div class="footer">
-      <p>© ${new Date().getFullYear()} Word of Covenant. All rights reserved.</p>
+      <p>© ${new Date().getFullYear()} Household Of Covenant And Faith Apostolic Ministry. All rights reserved.</p>
     </div>
   </div>
 </body>
@@ -245,7 +245,7 @@ export const sendEmailNotification = async (
     }
 
     await transporter.sendMail({
-      from: `"Word of Covenant" <${process.env.EMAIL_USER || 'noreply@wordofcovenant.org'}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${process.env.EMAIL_USER || 'noreply@hocfam.org'}>`,
       to,
       subject,
       html: htmlContent,
@@ -331,7 +331,7 @@ export const sendPasswordResetEmail = async (
   try {
     const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
     
-    const subject = '🔐 Password Reset Request - Word of Covenant';
+    const subject = '🔐 Password Reset Request - Household Of Covenant And Faith Apostolic Ministry';
     const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -354,7 +354,7 @@ export const sendPasswordResetEmail = async (
     <div class="content">
       <h2>Hello ${firstName}!</h2>
       
-      <p>We received a request to reset your password for your Word of Covenant account.</p>
+      <p>We received a request to reset your password for your Household Of Covenant And Faith Apostolic Ministry account.</p>
       
       <p>Click the button below to reset your password:</p>
       
@@ -384,13 +384,13 @@ export const sendPasswordResetEmail = async (
       </ul>
       
       <p><strong>Need help?</strong><br>
-      Contact us at <a href="mailto:support@wordofcovenant.org">support@wordofcovenant.org</a></p>
+      Contact us at <a href="mailto:support@hocfam.org">support@hocfam.org</a></p>
       
       <p><strong>God bless you!</strong><br>
-      The Word of Covenant Team</p>
+      The Household Of Covenant And Faith Apostolic Ministry Team</p>
     </div>
     <div class="footer">
-      <p>© ${new Date().getFullYear()} Word of Covenant. All rights reserved.</p>
+      <p>© ${new Date().getFullYear()} Household Of Covenant And Faith Apostolic Ministry. All rights reserved.</p>
       <p>You're receiving this because a password reset was requested for your account.</p>
     </div>
   </div>
@@ -399,7 +399,7 @@ export const sendPasswordResetEmail = async (
     `;
 
     await transporter.sendMail({
-      from: `"Word of Covenant" <${process.env.EMAIL_USER || 'noreply@wordofcovenant.org'}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${process.env.EMAIL_USER || 'noreply@hocfam.org'}>`,
       to,
       subject,
       html: htmlContent,
@@ -419,7 +419,7 @@ export const sendPasswordChangedEmail = async (
   firstName: string
 ): Promise<boolean> => {
   try {
-    const subject = '✅ Password Changed Successfully - Word of Covenant';
+    const subject = '✅ Password Changed Successfully - Household Of Covenant And Faith Apostolic Ministry';
     const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -447,11 +447,11 @@ export const sendPasswordChangedEmail = async (
         <p>Date: ${new Date().toLocaleString()}</p>
       </div>
       
-      <p>Your Word of Covenant account password was recently updated. You can now sign in with your new password.</p>
+      <p>Your Household Of Covenant And Faith Apostolic Ministry account password was recently updated. You can now sign in with your new password.</p>
       
       <div class="warning">
         <strong>⚠️ Didn't make this change?</strong>
-        <p>If you didn't request this password change, please contact us immediately at <a href="mailto:support@wordofcovenant.org">support@wordofcovenant.org</a> to secure your account.</p>
+        <p>If you didn't request this password change, please contact us immediately at <a href="mailto:support@hocfam.org">support@hocfam.org</a> to secure your account.</p>
       </div>
       
       <h3>🔒 Account Security Tips</h3>
@@ -464,13 +464,13 @@ export const sendPasswordChangedEmail = async (
       
       <p><strong>Need help?</strong><br>
       Our support team is here for you:<br>
-      Email: <a href="mailto:support@wordofcovenant.org">support@wordofcovenant.org</a></p>
+      Email: <a href="mailto:support@hocfam.org">support@hocfam.org</a></p>
       
       <p><strong>God bless you!</strong><br>
-      The Word of Covenant Team</p>
+      The Household Of Covenant And Faith Apostolic Ministry Team</p>
     </div>
     <div class="footer">
-      <p>© ${new Date().getFullYear()} Word of Covenant. All rights reserved.</p>
+      <p>© ${new Date().getFullYear()} Household Of Covenant And Faith Apostolic Ministry. All rights reserved.</p>
       <p>This is a security notification for your account.</p>
     </div>
   </div>
@@ -479,7 +479,7 @@ export const sendPasswordChangedEmail = async (
     `;
 
     await transporter.sendMail({
-      from: `"Word of Covenant" <${process.env.EMAIL_USER || 'noreply@wordofcovenant.org'}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${process.env.EMAIL_USER || 'noreply@hocfam.org'}>`,
       to,
       subject,
       html: htmlContent,

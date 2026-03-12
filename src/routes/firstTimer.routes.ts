@@ -16,7 +16,7 @@ router.post('/generate-qr', authenticate, requirePermission('manage_events'), as
 
     res.json({ 
       qrCode,
-      registrationUrl: `${process.env.APP_URL || 'https://wordofcovenant.org'}/first-timer/register/${qrCode}`
+      registrationUrl: `${process.env.APP_URL || 'https://hocfam.org'}/first-timer/register/${qrCode}`
     });
   } catch (error: any) {
     console.error('Generate QR error:', error);

@@ -96,8 +96,8 @@ router.post('/', authenticate, requirePermission('church_email:create'), async (
       return res.status(400).json({ error: 'User already has a church email' });
     }
 
-    // Create email with format: prefix@wordofcovenant.org
-    const churchEmail = `${emailPrefix.toLowerCase().replace(/\s+/g, '')}@wordofcovenant.org`;
+    // Create email with format: prefix@hocfam.org
+    const churchEmail = `${emailPrefix.toLowerCase().replace(/\s+/g, '')}@hocfam.org`;
 
     // Check if email already exists
     const [emailExists] = await pool.execute(
@@ -261,9 +261,9 @@ router.get('/suggestions/:position', authenticate, requirePermission('church_ema
     const { position } = req.params;
 
     const suggestions = [
-      `${position.toLowerCase().replace(/\s+/g, '')}@wordofcovenant.org`,
-      `${position.toLowerCase().replace(/\s+/g, '')}.woc@wordofcovenant.org`,
-      `${position.toLowerCase().replace(/\s+/g, '')}.covenant@wordofcovenant.org`
+      `${position.toLowerCase().replace(/\s+/g, '')}@hocfam.org`,
+      `${position.toLowerCase().replace(/\s+/g, '')}.hocfam@hocfam.org`,
+      `${position.toLowerCase().replace(/\s+/g, '')}.covenant@hocfam.org`
     ];
 
     res.json({ suggestions });

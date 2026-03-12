@@ -19,7 +19,7 @@ router.post('/generate-service-qr', authenticate, requirePermission('event:atten
       serviceType,
       serviceDate,
       eventId,
-      checkInUrl: `${process.env.APP_URL || 'https://wordofcovenant.org'}/attendance/check-in/${qrCode}`
+      checkInUrl: `${process.env.APP_URL || 'https://hocfam.org'}/attendance/check-in/${qrCode}`
     });
   } catch (error: any) {
     console.error('Generate service QR error:', error);

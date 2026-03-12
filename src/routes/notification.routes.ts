@@ -26,7 +26,7 @@ const SMS_SENDER = process.env.SMS_SENDER || 'WORDCOV';
 async function sendEmail(to: string, subject: string, message: string) {
   try {
     await emailTransporter.sendMail({
-      from: process.env.EMAIL_USER || 'Word of Covenant <noreply@wordofcovenant.org>',
+      from: process.env.EMAIL_USER || 'Household Of Covenant And Faith Apostolic Ministry <noreply@hocfam.org>',
       to,
       subject,
       html: message
@@ -147,7 +147,7 @@ router.post('/send-event-reminder', authenticate, async (req: any, res) => {
       }
 
       if (shouldSendSMS && user.phone_number) {
-        const smsMessage = `Event Reminder: ${event.title}\nDate: ${new Date(event.date).toLocaleDateString()}\n${message}\n- Word of Covenant`;
+        const smsMessage = `Event Reminder: ${event.title}\nDate: ${new Date(event.date).toLocaleDateString()}\n${message}\n- Household Of Covenant And Faith Apostolic Ministry`;
 
         await connection.execute(
           `INSERT INTO notification_queue 
@@ -206,7 +206,7 @@ router.post('/send-event-reminder', authenticate, async (req: any, res) => {
       }
 
       if (shouldSendSMS && firstTimer.phone) {
-        const smsMessage = `Event Reminder: ${event.title}\nDate: ${new Date(event.date).toLocaleDateString()}\n${message}\n- Word of Covenant`;
+        const smsMessage = `Event Reminder: ${event.title}\nDate: ${new Date(event.date).toLocaleDateString()}\n${message}\n- Household Of Covenant And Faith Apostolic Ministry`;
 
         await connection.execute(
           `INSERT INTO notification_queue 
@@ -327,7 +327,7 @@ router.post('/send-to-role', authenticate, requirePermission('manage_events'), a
     for (const user of users) {
       if (shouldSendEmail && user.email) {
         const emailMessage = `
-          <h2>Notification from Word of Covenant</h2>
+          <h2>Notification from Household Of Covenant And Faith Apostolic Ministry</h2>
           <p>Dear ${user.name},</p>
           <p>${message}</p>
           <p>God bless,<br/>Household Of Covenant And Faith Apostolic Ministry</p>
@@ -351,7 +351,7 @@ router.post('/send-to-role', authenticate, requirePermission('manage_events'), a
       }
 
       if (shouldSendSMS && user.phone_number) {
-        const smsMessage = `${message}\n- Word of Covenant`;
+        const smsMessage = `${message}\n- Household Of Covenant And Faith Apostolic Ministry`;
 
         await pool.execute(
           `INSERT INTO notification_queue 
