@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import pool from '../config/database';
 import { authenticate } from '../middleware/auth.middleware';
-import { sendWelcomeEmail, sendWelcomeSMS } from '../services/notification.service';
+import { sendWelcomeEmail, sendWelcomeSMS, sendPasswordResetEmail, sendPasswordChangedEmail } from '../services/notification.service';
 import { syncUserDepartmentGroups, ensureGeneralGroupAndAddMember } from '../services/chat.service';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -526,6 +527,161 @@ router.get('/notification-preferences', authenticate, async (req: any, res) => {
   } catch (error) {
     console.error('Error fetching notification preferences:', error);
     res.status(500).json({ message: 'Failed to fetch notification preferences' });
+  }
+});
+
+// Forgot password - Request reset
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    // Find user by email
+    const [users]: any = await pool.execute(
+      'SELECT id, email, first_name FROM users WHERE email = ?',
+      [email]
+    );
+
+    // Always return success message to prevent email enumeration
+    if (users.length === 0) {
+      return res.json({ 
+        message: 'If an account exists with this email, a password reset link has been sent.' 
+      });
+    }
+
+    const user = users[0];
+    
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    
+    // Token expires in 1 hour
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    // Delete any existing reset tokens for this user
+    await pool.execute(
+      'DELETE FROM password_resets WHERE user_id = ?',
+      [user.id]
+    );
+
+    // Save reset token to database
+    await pool.execute(
+      'INSERT INTO password_resets (user_id, email, token, expires_at) VALUES (?, ?, ?, ?)',
+      [user.id, user.email, hashedToken, expiresAt]
+    );
+
+    // Send reset email
+    const firstName = user.first_name || 'Friend';
+    await sendPasswordResetEmail(user.email, firstName, resetToken);
+
+    res.json({ 
+      message: 'If an account exists with this email, a password reset link has been sent.' 
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Failed to process password reset request' });
+  }
+});
+
+// Reset password - Verify token and update password
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: 'Token and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    // Hash the token to match database
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find valid reset token
+    const [resets]: any = await pool.execute(
+      'SELECT * FROM password_resets WHERE token = ? AND expires_at > NOW() AND used = FALSE',
+      [hashedToken]
+    );
+
+    if (resets.length === 0) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const reset = resets[0];
+
+    // Get user details
+    const [users]: any = await pool.execute(
+      'SELECT id, email, first_name FROM users WHERE id = ?',
+      [reset.user_id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const user = users[0];
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    await pool.execute(
+      'UPDATE users SET password = ? WHERE id = ?',
+      [hashedPassword, user.id]
+    );
+
+    // Mark token as used
+    await pool.execute(
+      'UPDATE password_resets SET used = TRUE WHERE id = ?',
+      [reset.id]
+    );
+
+    // Send password changed notification
+    const firstName = user.first_name || 'Friend';
+    await sendPasswordChangedEmail(user.email, firstName);
+
+    res.json({ message: 'Password has been reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Failed to reset password' });
+  }
+});
+
+// Verify reset token (for client-side validation)
+router.post('/verify-reset-token', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ valid: false, message: 'Token is required' });
+    }
+
+    // Hash the token to match database
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find valid reset token
+    const [resets]: any = await pool.execute(
+      'SELECT email FROM password_resets WHERE token = ? AND expires_at > NOW() AND used = FALSE',
+      [hashedToken]
+    );
+
+    if (resets.length === 0) {
+      return res.json({ valid: false, message: 'Invalid or expired reset token' });
+    }
+
+    res.json({ 
+      valid: true, 
+      email: resets[0].email,
+      message: 'Token is valid' 
+    });
+  } catch (error) {
+    console.error('Verify reset token error:', error);
+    res.status(500).json({ valid: false, message: 'Failed to verify token' });
   }
 });
 

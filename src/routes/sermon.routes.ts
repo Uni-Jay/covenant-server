@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import pool from '../config/database';
-import { authenticate, isAdmin } from '../middleware/auth.middleware';
+import { authenticate, isAdmin, isAdminOrMedia } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
 
 const router = Router();
@@ -39,14 +39,32 @@ router.get('/:id', async (req, res) => {
     }
     // Increment views
     await pool.execute('UPDATE sermons SET views = views + 1 WHERE id = ?', [req.params.id]);
-    res.json(sermons[0]);
+    
+    // Convert snake_case to camelCase for frontend
+    const sermon = sermons[0];
+    const formattedSermon = {
+      id: sermon.id,
+      title: sermon.title,
+      description: sermon.description,
+      preacher: sermon.preacher,
+      date: sermon.date,
+      videoUrl: sermon.video_url,
+      audioUrl: sermon.audio_url,
+      pdfUrl: sermon.pdf_url,
+      thumbnailUrl: sermon.thumbnail_url,
+      views: sermon.views,
+      category: sermon.category,
+      createdAt: sermon.created_at
+    };
+    
+    res.json(formattedSermon);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch sermon' });
   }
 });
 
-// Create sermon (admin only)
-router.post('/', authenticate, isAdmin, upload.fields([
+// Create sermon (admin or media team)
+router.post('/', authenticate, isAdminOrMedia, upload.fields([
   { name: 'video', maxCount: 1 },
   { name: 'audio', maxCount: 1 },
   { name: 'pdf', maxCount: 1 },
@@ -74,7 +92,7 @@ router.post('/', authenticate, isAdmin, upload.fields([
 });
 
 // Update sermon
-router.put('/:id', authenticate, isAdmin, async (req, res) => {
+router.put('/:id', authenticate, isAdminOrMedia, async (req, res) => {
   try {
     const { title, description, preacher, date, category } = req.body;
     await pool.execute(
@@ -88,7 +106,7 @@ router.put('/:id', authenticate, isAdmin, async (req, res) => {
 });
 
 // Delete sermon
-router.delete('/:id', authenticate, isAdmin, async (req, res) => {
+router.delete('/:id', authenticate, isAdminOrMedia, async (req, res) => {
   try {
     await pool.execute('DELETE FROM sermons WHERE id = ?', [req.params.id]);
     res.json({ message: 'Sermon deleted' });

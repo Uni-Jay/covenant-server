@@ -322,10 +322,183 @@ export const sendEventReminderEmail = async (
   }
 };
 
+// Send password reset email
+export const sendPasswordResetEmail = async (
+  to: string,
+  firstName: string,
+  resetToken: string
+): Promise<boolean> => {
+  try {
+    const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+    
+    const subject = '🔐 Password Reset Request - Word of Covenant';
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #9333ea 0%, #dc2626 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+    .button { display: inline-block; background: #9333ea; color: white; padding: 14px 35px; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; }
+    .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }
+    .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔐 Password Reset Request</h1>
+    </div>
+    <div class="content">
+      <h2>Hello ${firstName}!</h2>
+      
+      <p>We received a request to reset your password for your Word of Covenant account.</p>
+      
+      <p>Click the button below to reset your password:</p>
+      
+      <p style="text-align: center;">
+        <a href="${resetUrl}" class="button">Reset Password</a>
+      </p>
+      
+      <p>Or copy and paste this link into your browser:</p>
+      <p style="word-break: break-all; background: #fff; padding: 10px; border-radius: 4px; font-size: 12px;">
+        ${resetUrl}
+      </p>
+      
+      <div class="warning">
+        <strong>⚠️ Important:</strong>
+        <ul style="margin: 10px 0;">
+          <li>This link will expire in <strong>1 hour</strong></li>
+          <li>If you didn't request this, please ignore this email</li>
+          <li>Your password won't change unless you click the link above</li>
+        </ul>
+      </div>
+      
+      <h3>🔒 Security Tips</h3>
+      <ul>
+        <li>Never share your password with anyone</li>
+        <li>Use a strong, unique password</li>
+        <li>Enable two-factor authentication when available</li>
+      </ul>
+      
+      <p><strong>Need help?</strong><br>
+      Contact us at <a href="mailto:support@wordofcovenant.org">support@wordofcovenant.org</a></p>
+      
+      <p><strong>God bless you!</strong><br>
+      The Word of Covenant Team</p>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} Word of Covenant. All rights reserved.</p>
+      <p>You're receiving this because a password reset was requested for your account.</p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    await transporter.sendMail({
+      from: `"Word of Covenant" <${process.env.EMAIL_USER || 'noreply@wordofcovenant.org'}>`,
+      to,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`✓ Password reset email sent to ${to}`);
+    return true;
+  } catch (error) {
+    console.error('Password reset email error:', error);
+    return false;
+  }
+};
+
+// Send password changed notification email
+export const sendPasswordChangedEmail = async (
+  to: string,
+  firstName: string
+): Promise<boolean> => {
+  try {
+    const subject = '✅ Password Changed Successfully - Word of Covenant';
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+    .success { background: #d1fae5; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 4px; }
+    .warning { background: #fee2e2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0; border-radius: 4px; }
+    .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>✅ Password Changed</h1>
+    </div>
+    <div class="content">
+      <h2>Hello ${firstName}!</h2>
+      
+      <div class="success">
+        <p><strong>✓ Your password has been changed successfully!</strong></p>
+        <p>Date: ${new Date().toLocaleString()}</p>
+      </div>
+      
+      <p>Your Word of Covenant account password was recently updated. You can now sign in with your new password.</p>
+      
+      <div class="warning">
+        <strong>⚠️ Didn't make this change?</strong>
+        <p>If you didn't request this password change, please contact us immediately at <a href="mailto:support@wordofcovenant.org">support@wordofcovenant.org</a> to secure your account.</p>
+      </div>
+      
+      <h3>🔒 Account Security Tips</h3>
+      <ul>
+        <li>Keep your password private and secure</li>
+        <li>Use a unique password for this account</li>
+        <li>Change your password regularly</li>
+        <li>Be cautious of phishing emails</li>
+      </ul>
+      
+      <p><strong>Need help?</strong><br>
+      Our support team is here for you:<br>
+      Email: <a href="mailto:support@wordofcovenant.org">support@wordofcovenant.org</a></p>
+      
+      <p><strong>God bless you!</strong><br>
+      The Word of Covenant Team</p>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} Word of Covenant. All rights reserved.</p>
+      <p>This is a security notification for your account.</p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    await transporter.sendMail({
+      from: `"Word of Covenant" <${process.env.EMAIL_USER || 'noreply@wordofcovenant.org'}>`,
+      to,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`✓ Password changed notification sent to ${to}`);
+    return true;
+  } catch (error) {
+    console.error('Password changed email error:', error);
+    return false;
+  }
+};
+
 export default {
   sendWelcomeEmail,
   sendWelcomeSMS,
   checkNotificationPreference,
   sendEmailNotification,
   sendEventReminderEmail,
+  sendPasswordResetEmail,
+  sendPasswordChangedEmail,
 };

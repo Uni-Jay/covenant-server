@@ -42,15 +42,23 @@ const PORT = process.env.PORT || 5000;
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-app.use(cors({
-  origin: [
-    process.env.CLIENT_URL || 'http://localhost:5173',
-    'http://localhost:8081', // Expo web
-    'http://10.0.2.2:8081', // Android emulator
-    'exp://localhost:8081', // Expo Go
-  ],
-  credentials: true
-}));
+// Allow all local network connections in development
+const corsOptions = process.env.NODE_ENV === 'production' 
+  ? {
+      origin: [
+        process.env.CLIENT_URL || 'http://localhost:5173',
+        'http://localhost:8081',
+        'http://10.0.2.2:8081',
+        'exp://localhost:8081',
+      ],
+      credentials: true
+    }
+  : {
+      origin: true, // Allow all origins in development (for local network access)
+      credentials: true
+    };
+
+app.use(cors(corsOptions));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ extended: true, limit: '200mb' }));
@@ -106,11 +114,14 @@ const httpServer = createServer(app);
 // Set up Socket.IO for real-time chat and WebRTC
 setupSocketIO(httpServer);
 
-// Start server
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+// Start server - Listen on all network interfaces (0.0.0.0) to accept connections from phones
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`🚀 Server running on:`);
+  console.log(`   - Local: http://localhost:${PORT}`);
+  console.log(`   - Network: http://[YOUR-IP]:${PORT}`);
   console.log(`📖 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔌 Socket.IO server ready`);
+  console.log(`📱 Mobile devices on same WiFi can connect using your network IP`);
   
   // Initialize birthday checker
   initializeBirthdayChecker();

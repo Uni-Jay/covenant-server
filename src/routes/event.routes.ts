@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import pool from '../config/database';
-import { authenticate, isAdmin } from '../middleware/auth.middleware';
+import { authenticate, isAdmin, isAdminOrMedia } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
 
 const router = Router();
@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', authenticate, isAdmin, upload.single('image'), async (req: any, res) => {
+router.post('/', authenticate, isAdminOrMedia, upload.single('image'), async (req: any, res) => {
   try {
     const { title, description, date, time, location, category } = req.body;
     const imageUrl = req.file ? `/uploads/events/${req.file.filename}` : null;
@@ -43,7 +43,7 @@ router.post('/', authenticate, isAdmin, upload.single('image'), async (req: any,
   }
 });
 
-router.put('/:id', authenticate, isAdmin, upload.single('image'), async (req: any, res) => {
+router.put('/:id', authenticate, isAdminOrMedia, upload.single('image'), async (req: any, res) => {
   try {
     const { title, description, date, time, location, category } = req.body;
     let imageUrl = null;
@@ -70,7 +70,7 @@ router.put('/:id', authenticate, isAdmin, upload.single('image'), async (req: an
   }
 });
 
-router.delete('/:id', authenticate, isAdmin, async (req, res) => {
+router.delete('/:id', authenticate, isAdminOrMedia, async (req, res) => {
   try {
     await pool.execute('DELETE FROM events WHERE id = ?', [req.params.id]);
     res.json({ message: 'Event deleted' });

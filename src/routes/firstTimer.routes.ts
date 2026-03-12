@@ -219,7 +219,7 @@ router.get('/', authenticate, requirePermission('view_attendance'), async (req, 
     const [firstTimers] = await pool.execute(
       `SELECT ft.*, 
        COUNT(a.id) as total_visits,
-       u.username as converted_username
+       CONCAT(u.first_name, ' ', u.last_name) as converted_username
        FROM first_timers ft
        LEFT JOIN attendance a ON ft.id = a.first_timer_id
        LEFT JOIN users u ON ft.converted_user_id = u.id
