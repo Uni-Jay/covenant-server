@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { createServer } from 'http';
 import { setupSocketIO } from './services/socket.service';
 import { initializeBirthdayChecker } from './services/birthday.service';
@@ -34,6 +35,13 @@ import aiRoutes from './routes/ai.routes';
 
 // Load environment variables
 dotenv.config();
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('📁 Created uploads directory');
+}
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
