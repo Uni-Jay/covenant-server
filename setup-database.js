@@ -26,7 +26,7 @@ async function setupDatabase() {
     await connection.query(schema);
 
     console.log('✅ Database setup completed successfully!');
-    console.log('📊 Database: word_of_covenant_db');
+    console.log('📊 Database:', process.env.DB_NAME || 'railway');
     console.log('👤 Default admin: admin@wordofcovenant.org / admin123');
     
     await connection.end();

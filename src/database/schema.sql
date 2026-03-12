@@ -1,7 +1,7 @@
 -- Household Of Covenant And Faith Apostolic Ministry Database Schema
 
-CREATE DATABASE IF NOT EXISTS word_of_covenant_db;
-USE word_of_covenant_db;
+-- Railway MySQL uses 'railway' database by default
+USE railway;
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
