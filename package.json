@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "nodemon src/index.ts",
     "build": "npx tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "migrate:setup": "node migrate-railway.js",
+    "migrate:export": "node export-local-data.js",
+    "migrate:import": "node import-to-railway.js",
+    "migrate:direct": "node migrate-data-direct.js",
+    "migrate:full": "node full-migration.js"
   },
   "keywords": [],
   "author": "",

@@ -8,6 +8,7 @@ import fs from 'fs';
 import { createServer } from 'http';
 import { setupSocketIO } from './services/socket.service';
 import { initializeBirthdayChecker } from './services/birthday.service';
+import { initializeDatabase } from './database/init';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
@@ -123,13 +124,16 @@ const httpServer = createServer(app);
 setupSocketIO(httpServer);
 
 // Start server - Listen on all network interfaces (0.0.0.0) to accept connections from phones
-httpServer.listen(Number(PORT), '0.0.0.0', () => {
+httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log(`🚀 Server running on:`);
   console.log(`   - Local: http://localhost:${PORT}`);
   console.log(`   - Network: http://[YOUR-IP]:${PORT}`);
   console.log(`📖 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔌 Socket.IO server ready`);
   console.log(`📱 Mobile devices on same WiFi can connect using your network IP`);
+  
+  // Initialize database tables if needed
+  await initializeDatabase();
   
   // Initialize birthday checker
   initializeBirthdayChecker();
