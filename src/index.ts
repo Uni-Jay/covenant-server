@@ -47,15 +47,32 @@ if (!fs.existsSync(uploadsDir)) {
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
+const configuredOrigins = [
+  process.env.CLIENT_URL,
+  process.env.CLIENT_URLS,
+]
+  .filter(Boolean)
+  .flatMap((value) => value!.split(','))
+  .map((value) => value.trim())
+  .filter(Boolean);
+
 // Middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+// Hardcoded production origins as fallback
+const hardcodedProductionOrigins = [
+  'https://hocfam.org',
+  'https://www.hocfam.org',
+  'https://covenant-web.vercel.app',
+];
+
 // Allow all local network connections in development
-const corsOptions = process.env.NODE_ENV === 'production' 
+const corsOptions = process.env.NODE_ENV === 'production'
   ? {
       origin: [
-        process.env.CLIENT_URL || 'http://localhost:5173',
+        ...hardcodedProductionOrigins,
+        ...configuredOrigins,
         'http://localhost:8081',
         'http://10.0.2.2:8081',
         'exp://localhost:8081',
