@@ -19,7 +19,6 @@
     "@google/generative-ai": "^0.24.1",
     "@types/bcrypt": "^6.0.0",
     "@types/nodemailer": "^7.0.5",
-    "@types/uuid": "^9.0.8",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -36,8 +35,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.12",
     "sharp": "^0.33.2",
-    "socket.io": "^4.8.3",
-    "uuid": "^9.0.1"
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

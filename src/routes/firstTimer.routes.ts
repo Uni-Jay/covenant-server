@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
 import pool from '../config/database';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { sendWelcomeEmail, sendWelcomeSMS } from '../services/notification.service';
 
@@ -12,7 +12,7 @@ const router = express.Router();
 router.post('/generate-qr', authenticate, requirePermission('manage_events'), async (req, res) => {
   try {
     // Generate unique QR code
-    const qrCode = `FT-${uuidv4()}`;
+    const qrCode = `FT-${randomUUID()}`;
 
     res.json({ 
       qrCode,

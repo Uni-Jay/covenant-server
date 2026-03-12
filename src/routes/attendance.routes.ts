@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
 import pool from '../config/database';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ router.post('/generate-service-qr', authenticate, requirePermission('event:atten
 
   try {
     // Generate unique QR code for this service
-    const qrCode = `SVC-${serviceType}-${serviceDate}-${uuidv4().slice(0, 8)}`;
+    const qrCode = `SVC-${serviceType}-${serviceDate}-${randomUUID().slice(0, 8)}`;
 
     res.json({ 
       qrCode,
