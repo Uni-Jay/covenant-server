@@ -60,31 +60,34 @@ const configuredOrigins = [
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-// Hardcoded production origins as fallback
-const hardcodedProductionOrigins = [
+
+const allowedOrigins = [
   'https://hocfam.org',
   'https://www.hocfam.org',
   'https://covenant-web.vercel.app',
-];
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:8081',
+  'http://10.0.2.2:8081',
+  'exp://localhost:8081',
+  ...configuredOrigins,
+].filter(Boolean);
 
-// Allow all local network connections in development
-const corsOptions = process.env.NODE_ENV === 'production'
-  ? {
-      origin: [
-        ...hardcodedProductionOrigins,
-        ...configuredOrigins,
-        'http://localhost:8081',
-        'http://10.0.2.2:8081',
-        'exp://localhost:8081',
-      ],
-      credentials: true
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    // Allow any localhost/local IP in development
+    if (process.env.NODE_ENV !== 'production' || /^http:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
     }
-  : {
-      origin: true, // Allow all origins in development (for local network access)
-      credentials: true
-    };
-
-app.use(cors(corsOptions));
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ extended: true, limit: '200mb' }));
