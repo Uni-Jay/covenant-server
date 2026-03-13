@@ -31,6 +31,35 @@ const profileUpload = multer({
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+function parseEnvNumber(rawValue: string | undefined, fallback: number): number {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const normalized = rawValue.trim().replace(/^['\"]|['\"]$/g, '');
+  const firstNumericMatch = normalized.match(/\d+/);
+  if (!firstNumericMatch) {
+    return fallback;
+  }
+
+  const parsed = parseInt(firstNumericMatch[0], 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const EMAIL_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
+
+async function waitForEmailConfirmation(emailPromise: Promise<boolean>, label: string): Promise<boolean> {
+  return Promise.race([
+    emailPromise,
+    new Promise<boolean>((resolve) => {
+      setTimeout(() => {
+        console.warn(`${label} is still pending after ${EMAIL_BLOCKING_WAIT_MS}ms; returning without blocking request.`);
+        resolve(false);
+      }, EMAIL_BLOCKING_WAIT_MS);
+    }),
+  ]);
+}
+
 // Register
 router.post('/register', async (req, res) => {
   try {
@@ -575,7 +604,10 @@ router.post('/forgot-password', async (req, res) => {
 
     // Send reset email
     const firstName = user.first_name || 'Friend';
-    const emailDelivered = await sendPasswordResetEmail(user.email, firstName, resetToken);
+    const emailDelivered = await waitForEmailConfirmation(
+      sendPasswordResetEmail(user.email, firstName, resetToken),
+      `Password reset email to ${user.email}`
+    );
 
     if (!emailDelivered) {
       return res.status(202).json({
@@ -652,7 +684,10 @@ router.post('/reset-password', async (req, res) => {
 
     // Send password changed notification
     const firstName = user.first_name || 'Friend';
-    const emailDelivered = await sendPasswordChangedEmail(user.email, firstName);
+    const emailDelivered = await waitForEmailConfirmation(
+      sendPasswordChangedEmail(user.email, firstName),
+      `Password changed confirmation email to ${user.email}`
+    );
 
     if (!emailDelivered) {
       return res.status(202).json({
