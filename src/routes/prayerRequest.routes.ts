@@ -8,6 +8,10 @@ const router = Router();
 const prayerAdminRecipient = process.env.PRAYER_REQUEST_EMAIL || 'admin@hocfam.org';
 const PRAYER_SMTP_TIMEOUT_MS = parseInt((process.env.SMTP_TIMEOUT_MS || '2500').replace(/[^0-9]/g, '') || '2500', 10);
 const PRAYER_BLOCKING_WAIT_MS = parseInt((process.env.SMTP_BLOCKING_WAIT_MS || '2500').replace(/[^0-9]/g, '') || '2500', 10);
+const PRAYER_EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
+const PRAYER_RESEND_ONLY_MODE = PRAYER_EMAIL_MODE === 'resend' || PRAYER_EMAIL_MODE === 'api';
+const PRAYER_RESEND_API_KEY = process.env.RESEND_API_KEY;
+const PRAYER_RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org';
 
 const prayerTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.zoho.com',
@@ -21,6 +25,49 @@ const prayerTransporter = nodemailer.createTransport({
     pass: process.env.EMAIL_ADMIN_PASSWORD || process.env.EMAIL_PASSWORD,
   },
 });
+
+async function sendPrayerViaResend(mailOptions: nodemailer.SendMailOptions): Promise<boolean> {
+  if (!PRAYER_RESEND_API_KEY) {
+    return false;
+  }
+
+  const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
+  const to = toList.filter(Boolean).map((item) => String(item));
+  if (!to.length) {
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${PRAYER_RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: PRAYER_RESEND_FROM,
+        to,
+        subject: String(mailOptions.subject || ''),
+        html: String(mailOptions.html || ''),
+        reply_to: mailOptions.replyTo ? String(mailOptions.replyTo) : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Prayer request email dispatch failed via Resend:', {
+        status: response.status,
+        body: errorText,
+      });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Prayer request email dispatch failed via Resend:', error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
 
 // Get all prayer requests (admin/media only)
 router.get('/all', authenticate, async (req, res) => {
@@ -97,13 +144,8 @@ router.post('/', async (req, res) => {
     if (source === 'website') {
       const senderDisplay = isAnonymous ? 'Anonymous Prayer Request' : `${name || 'Someone'} via HOCFAM`;
       const senderEmail = process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org';
-
-      const mailPromise = prayerTransporter.sendMail({
-          from: `"${senderDisplay}" <${senderEmail}>`,
-          to: prayerAdminRecipient,
-          replyTo: isAnonymous ? undefined : email,
-          subject: `[Prayer Request] ${String(category || 'general').toUpperCase()}${isUrgent ? ' - URGENT' : ''}`,
-          html: `
+      const prayerSubject = `[Prayer Request] ${String(category || 'general').toUpperCase()}${isUrgent ? ' - URGENT' : ''}`;
+      const prayerHtml = `
             <h2>New Prayer Request</h2>
             <p><strong>Source:</strong> Website</p>
             <p><strong>Category:</strong> ${category || 'general'}</p>
@@ -114,7 +156,32 @@ router.post('/', async (req, res) => {
             <p><strong>Phone:</strong> ${isAnonymous ? 'Anonymous' : (finalPhone || 'Not provided')}</p>
             <hr />
             <p>${String(finalRequest || '').replace(/\n/g, '<br/>')}</p>
-          `,
+          `;
+
+      if (PRAYER_RESEND_ONLY_MODE) {
+        const emailDelivered = await sendPrayerViaResend({
+          from: `"${senderDisplay}" <${PRAYER_RESEND_FROM}>`,
+          to: prayerAdminRecipient,
+          replyTo: isAnonymous ? undefined : email,
+          subject: prayerSubject,
+          html: prayerHtml,
+        });
+
+        return res.status(emailDelivered ? 201 : 202).json({
+          message: 'Prayer request submitted',
+          id: result.insertId,
+          routedTo: prayerAdminRecipient,
+          emailDelivered,
+          warning: emailDelivered ? undefined : `Prayer request saved, but delivery failed in EMAIL_MODE=${PRAYER_EMAIL_MODE}.`,
+        });
+      }
+
+      const mailPromise = prayerTransporter.sendMail({
+          from: `"${senderDisplay}" <${senderEmail}>`,
+          to: prayerAdminRecipient,
+          replyTo: isAnonymous ? undefined : email,
+          subject: prayerSubject,
+          html: prayerHtml,
         });
 
       let emailDelivered = true;

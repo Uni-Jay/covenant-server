@@ -55,6 +55,8 @@ const SMTP_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 
 const SMTP_FAILURE_COOLDOWN_MS = parseEnvNumber(process.env.SMTP_FAILURE_COOLDOWN_MS, 60000);
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_USER || 'admin@hocfam.org';
+const EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
+const RESEND_ONLY_MODE = EMAIL_MODE === 'resend' || EMAIL_MODE === 'api';
 
 let smtpBackoffUntil = 0;
 
@@ -313,6 +315,18 @@ async function sendMailWithFallback(
   mailOptions: nodemailer.SendMailOptions,
   label: string
 ) {
+  if (RESEND_ONLY_MODE) {
+    if (RESEND_API_KEY) {
+      const resendSent = await sendViaResend(mailOptions, `${label} (Resend mode)`);
+      if (resendSent) {
+        return;
+      }
+      throw new Error(`${label} failed via Resend in EMAIL_MODE=${EMAIL_MODE}`);
+    }
+
+    throw new Error(`EMAIL_MODE=${EMAIL_MODE} but RESEND_API_KEY is not configured`);
+  }
+
   if (isSmtpBackoffActive()) {
     if (RESEND_API_KEY) {
       const resendSent = await sendViaResend(mailOptions, `${label} (SMTP backoff)`);
