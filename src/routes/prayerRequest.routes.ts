@@ -10,6 +10,7 @@ const PRAYER_SMTP_TIMEOUT_MS = parseInt((process.env.SMTP_TIMEOUT_MS || '2500').
 const PRAYER_BLOCKING_WAIT_MS = parseInt((process.env.SMTP_BLOCKING_WAIT_MS || '2500').replace(/[^0-9]/g, '') || '2500', 10);
 const PRAYER_EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
 const PRAYER_RESEND_ONLY_MODE = PRAYER_EMAIL_MODE === 'resend' || PRAYER_EMAIL_MODE === 'api';
+const PRAYER_SMTP_ONLY_MODE = PRAYER_EMAIL_MODE === 'smtp';
 const PRAYER_RESEND_API_KEY = process.env.RESEND_API_KEY;
 const PRAYER_RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org';
 
@@ -158,7 +159,7 @@ router.post('/', async (req, res) => {
             <p>${String(finalRequest || '').replace(/\n/g, '<br/>')}</p>
           `;
 
-      if (PRAYER_RESEND_ONLY_MODE) {
+      if (PRAYER_RESEND_ONLY_MODE && !PRAYER_SMTP_ONLY_MODE) {
         const emailDelivered = await sendPrayerViaResend({
           from: `"${senderDisplay}" <${PRAYER_RESEND_FROM}>`,
           to: prayerAdminRecipient,

@@ -57,6 +57,7 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_USER || 'admin@hocfam.org';
 const EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
 const RESEND_ONLY_MODE = EMAIL_MODE === 'resend' || EMAIL_MODE === 'api';
+const SMTP_ONLY_MODE = EMAIL_MODE === 'smtp';
 
 let smtpBackoffUntil = 0;
 
@@ -328,7 +329,7 @@ async function sendMailWithFallback(
   }
 
   if (isSmtpBackoffActive()) {
-    if (RESEND_API_KEY) {
+    if (!SMTP_ONLY_MODE && RESEND_API_KEY) {
       const resendSent = await sendViaResend(mailOptions, `${label} (SMTP backoff)`);
       if (resendSent) {
         return;
@@ -439,7 +440,7 @@ async function sendMailWithFallback(
     }
   }
 
-  if (RESEND_API_KEY) {
+  if (!SMTP_ONLY_MODE && RESEND_API_KEY) {
     const resendSent = await sendViaResend(mailOptions, label);
     if (resendSent) {
       return;
