@@ -670,12 +670,12 @@ export const sendPasswordResetEmail = async (
       to,
       subject,
       html: htmlContent,
-    }, 'Password changed email');
+    }, 'Password reset email');
 
     console.log(`✓ Password reset email sent to ${to}`);
     return true;
   } catch (error) {
-    console.error('Password reset email error:', error);
+    console.error('Password reset email error:', normalizeMailError(error));
     return false;
   }
 };
@@ -755,7 +755,7 @@ export const sendPasswordChangedEmail = async (
     console.log(`✓ Password changed notification sent to ${to}`);
     return true;
   } catch (error) {
-    console.error('Password changed email error:', error);
+    console.error('Password changed email error:', normalizeMailError(error));
     return false;
   }
 };
