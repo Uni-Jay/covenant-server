@@ -107,6 +107,23 @@ function createTransporter(auth: SmtpAuth, port = SMTP_PORT, secure = SMTP_SECUR
 }
 
 function normalizeSmtpError(error: unknown) {
+  if (error instanceof Error) {
+    const errorWithMeta = error as Error & {
+      code?: string;
+      command?: string;
+      response?: string;
+      responseCode?: number;
+    };
+
+    return {
+      message: errorWithMeta.message,
+      code: errorWithMeta.code,
+      command: errorWithMeta.command,
+      responseCode: errorWithMeta.responseCode,
+      response: errorWithMeta.response,
+    };
+  }
+
   if (typeof error === 'object' && error !== null) {
     const errorObject = error as {
       message?: unknown;
@@ -116,10 +133,18 @@ function normalizeSmtpError(error: unknown) {
       responseCode?: unknown;
     };
 
+    const fallbackMessageSource = errorObject.message ?? errorObject;
+    let fallbackMessage = '';
+    try {
+      fallbackMessage = JSON.stringify(fallbackMessageSource);
+    } catch {
+      fallbackMessage = String(fallbackMessageSource);
+    }
+
     return {
       message: typeof errorObject.message === 'string'
         ? errorObject.message
-        : JSON.stringify(errorObject),
+        : fallbackMessage,
       code: typeof errorObject.code === 'string' ? errorObject.code : undefined,
       command: typeof errorObject.command === 'string' ? errorObject.command : undefined,
       responseCode: typeof errorObject.responseCode === 'number' ? errorObject.responseCode : undefined,
@@ -127,25 +152,8 @@ function normalizeSmtpError(error: unknown) {
     };
   }
 
-  if (!(error instanceof Error)) {
-    return {
-      message: String(error),
-    };
-  }
-
-  const errorWithMeta = error as Error & {
-    code?: string;
-    command?: string;
-    response?: string;
-    responseCode?: number;
-  };
-
   return {
-    message: errorWithMeta.message,
-    code: errorWithMeta.code,
-    command: errorWithMeta.command,
-    responseCode: errorWithMeta.responseCode,
-    response: errorWithMeta.response,
+    message: String(error),
   };
 }
 
@@ -451,22 +459,6 @@ router.post('/', async (req, res) => {
         `,
       }, 'Admin contact notification email');
 
-    // Confirmation email is best-effort and should not delay API response.
-    void sendMailWithFallback(resolvedCategory, {
-        from: `"Household Of Covenant And Faith Apostolic Ministry" <${senderAuth.user || orgMailboxes.info}>`,
-        to: email,
-        subject: 'We received your message',
-        html: `
-          <p>Hi ${name},</p>
-          <p>Thank you for contacting Household Of Covenant And Faith Apostolic Ministry.</p>
-          <p>Your message has been received and routed to our ${resolvedCategory} team. We will get back to you shortly.</p>
-          <p><strong>Your subject:</strong> ${subject}</p>
-          <p>Blessings,<br/>HOCFAM Team</p>
-        `,
-      }, 'Sender confirmation email').catch((confirmationError) => {
-      console.error('Sender confirmation email failed (non-blocking):', normalizeSmtpError(confirmationError));
-    });
-
     let adminEmailDelivered = true;
     let adminSmtpError: ReturnType<typeof normalizeSmtpError> | undefined;
 
@@ -482,9 +474,26 @@ router.post('/', async (req, res) => {
       console.error('Contact email dispatch failed:', adminSmtpError);
       adminEmailDelivered = false;
 
-      // Continue trying admin delivery in background.
-      void adminMailPromise.catch((backgroundError) => {
-        console.error('Background admin email delivery failed:', normalizeSmtpError(backgroundError));
+      // Consume eventual promise rejection to avoid unhandled rejection noise.
+      void adminMailPromise.catch(() => undefined);
+    }
+
+    const shouldSendConfirmation = adminEmailDelivered || !!RESEND_API_KEY || !isTransientSmtpError(adminSmtpError || { message: '' });
+    if (shouldSendConfirmation) {
+      // Confirmation email is best-effort and should not delay API response.
+      void sendMailWithFallback(resolvedCategory, {
+          from: `"Household Of Covenant And Faith Apostolic Ministry" <${senderAuth.user || orgMailboxes.info}>`,
+          to: email,
+          subject: 'We received your message',
+          html: `
+            <p>Hi ${name},</p>
+            <p>Thank you for contacting Household Of Covenant And Faith Apostolic Ministry.</p>
+            <p>Your message has been received and routed to our ${resolvedCategory} team. We will get back to you shortly.</p>
+            <p><strong>Your subject:</strong> ${subject}</p>
+            <p>Blessings,<br/>HOCFAM Team</p>
+          `,
+        }, 'Sender confirmation email').catch((confirmationError) => {
+        console.error('Sender confirmation email failed (non-blocking):', normalizeSmtpError(confirmationError));
       });
     }
 
