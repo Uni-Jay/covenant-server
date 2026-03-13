@@ -6,6 +6,18 @@ import { randomUUID } from 'crypto';
 
 const router = express.Router();
 
+const getQueryString = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0];
+  }
+
+  return undefined;
+};
+
 // Generate QR code for service/event
 router.post('/generate-service-qr', authenticate, requirePermission('event:attendance'), async (req, res) => {
   const { serviceType, serviceDate, eventId } = req.body;
@@ -141,7 +153,10 @@ router.get('/my-attendance', authenticate, async (req, res) => {
 
 // Get attendance report (admin)
 router.get('/report', authenticate, requirePermission('view_attendance'), async (req, res) => {
-  const { startDate, endDate, serviceType, department } = req.query;
+  const startDate = getQueryString(req.query.startDate);
+  const endDate = getQueryString(req.query.endDate);
+  const serviceType = getQueryString(req.query.serviceType);
+  const department = getQueryString(req.query.department);
 
   try {
     let query = `
@@ -217,7 +232,7 @@ router.get('/report', authenticate, requirePermission('view_attendance'), async 
 // Get attendance by service date (admin)
 router.get('/by-date/:date', authenticate, requirePermission('view_attendance'), async (req, res) => {
   const { date } = req.params;
-  const { serviceType } = req.query;
+  const serviceType = getQueryString(req.query.serviceType);
 
   try {
     let query = `

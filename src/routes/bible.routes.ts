@@ -12,6 +12,18 @@ interface AuthRequest extends express.Request {
   };
 }
 
+const getQueryString = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0];
+  }
+
+  return undefined;
+};
+
 // Get all Bible translations
 router.get('/translations', async (req, res: Response) => {
   try {
@@ -88,7 +100,8 @@ router.get('/books', async (req, res: Response) => {
 // Search Bible verses
 router.get('/search', async (req, res: Response) => {
   try {
-    const { query, translation = 'KJV' } = req.query;
+    const query = getQueryString(req.query.query);
+    const translation = getQueryString(req.query.translation) || 'KJV';
 
     if (!query) {
       return res.status(400).json({ error: 'Search query is required' });

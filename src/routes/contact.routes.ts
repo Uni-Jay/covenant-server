@@ -11,9 +11,60 @@ const orgMailboxes = {
   media: process.env.ORG_EMAIL_MEDIA || 'media@hocfam.org',
 };
 
+function parseEnvNumber(rawValue: string | undefined, fallback: number): number {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const normalized = rawValue.trim().replace(/^['\"]|['\"]$/g, '');
+  const firstNumericMatch = normalized.match(/\d+/);
+  if (!firstNumericMatch) {
+    return fallback;
+  }
+
+  const parsed = parseInt(firstNumericMatch[0], 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseEnvBoolean(rawValue: string | undefined, fallback: boolean): boolean {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const normalized = rawValue.trim().replace(/^['\"]|['\"]$/g, '').toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['false', '0', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+}
+
+const SMTP_TIMEOUT_MS = parseEnvNumber(process.env.SMTP_TIMEOUT_MS, 12000);
+const SMTP_PORT = parseEnvNumber(process.env.EMAIL_PORT, 587);
+const SMTP_SECURE = parseEnvBoolean(process.env.EMAIL_SECURE, false);
+const SMTP_FALLBACK_PORT = parseEnvNumber(process.env.EMAIL_FALLBACK_PORT, 465);
+const SMTP_FALLBACK_SECURE = parseEnvBoolean(process.env.EMAIL_FALLBACK_SECURE, true);
+const SMTP_DEBUG = parseEnvBoolean(process.env.SMTP_DEBUG, false);
+const SMTP_SINGLE_ACCOUNT = parseEnvBoolean(process.env.SMTP_SINGLE_ACCOUNT, true);
+const SMTP_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_USER || 'admin@hocfam.org';
+
 type ContactCategory = 'admin' | 'info' | 'support' | 'media';
 
-function getCategorySmtpAuth(category: ContactCategory) {
+type SmtpAuth = {
+  user?: string;
+  pass?: string;
+};
+
+function getCategorySmtpAuth(category: ContactCategory): SmtpAuth {
+  if (SMTP_SINGLE_ACCOUNT) {
+    return getGlobalSmtpAuth();
+  }
+
   const categoryKey = category.toUpperCase();
   const categoryUser = process.env[`EMAIL_${categoryKey}_USER` as keyof NodeJS.ProcessEnv] as string | undefined;
   const categoryPassword = process.env[`EMAIL_${categoryKey}_PASSWORD` as keyof NodeJS.ProcessEnv] as string | undefined;
@@ -24,18 +75,145 @@ function getCategorySmtpAuth(category: ContactCategory) {
   return { user, pass };
 }
 
-function getCategoryTransporter(category: ContactCategory) {
-  const auth = getCategorySmtpAuth(category);
+function getGlobalSmtpAuth(): SmtpAuth {
+  return {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
+  };
+}
+
+function createTransporter(auth: SmtpAuth, port = SMTP_PORT, secure = SMTP_SECURE) {
+  if (!auth.user || !auth.pass) {
+    return null;
+  }
 
   return nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.zoho.com',
-    port: parseInt(process.env.EMAIL_PORT || '587'),
-    secure: (process.env.EMAIL_SECURE || 'false') === 'true',
+    port,
+    secure,
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
+    logger: SMTP_DEBUG,
+    debug: SMTP_DEBUG,
     auth: {
       user: auth.user,
       pass: auth.pass,
     },
   });
+}
+
+function normalizeSmtpError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return {
+      message: String(error),
+    };
+  }
+
+  const errorWithMeta = error as Error & {
+    code?: string;
+    command?: string;
+    response?: string;
+    responseCode?: number;
+  };
+
+  return {
+    message: errorWithMeta.message,
+    code: errorWithMeta.code,
+    command: errorWithMeta.command,
+    responseCode: errorWithMeta.responseCode,
+    response: errorWithMeta.response,
+  };
+}
+
+function buildSmtpHint(error: ReturnType<typeof normalizeSmtpError> | undefined): string {
+  if (!error) {
+    return 'No SMTP error details were captured.';
+  }
+
+  const parts: string[] = [];
+  if (error.code) {
+    parts.push(`code=${error.code}`);
+  }
+  if (typeof error.responseCode === 'number') {
+    parts.push(`responseCode=${error.responseCode}`);
+  }
+  if (error.command) {
+    parts.push(`command=${error.command}`);
+  }
+  if (error.response) {
+    parts.push(`response=${error.response}`);
+  }
+  if (error.message) {
+    parts.push(`message=${error.message}`);
+  }
+
+  return parts.join(' | ') || 'No SMTP error details were captured.';
+}
+
+function isConnectionLevelError(error: ReturnType<typeof normalizeSmtpError>): boolean {
+  return (
+    error.code === 'ETIMEDOUT' ||
+    error.code === 'ECONNREFUSED' ||
+    error.code === 'EHOSTUNREACH' ||
+    error.code === 'ENETUNREACH' ||
+    error.code === 'ENOTFOUND' ||
+    error.command === 'CONN'
+  );
+}
+
+async function sendViaResend(mailOptions: nodemailer.SendMailOptions, label: string): Promise<boolean> {
+  if (!RESEND_API_KEY) {
+    return false;
+  }
+
+  const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
+  const to = toList.filter(Boolean).map((item) => String(item));
+  if (!to.length) {
+    return false;
+  }
+
+  const payload = {
+    from: RESEND_FROM,
+    to,
+    subject: String(mailOptions.subject || ''),
+    html: String(mailOptions.html || ''),
+    reply_to: mailOptions.replyTo ? String(mailOptions.replyTo) : undefined,
+  };
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`${label} failed via Resend fallback`, {
+        status: response.status,
+        body: errorText,
+      });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`${label} failed via Resend fallback`, normalizeSmtpError(error));
+    return false;
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out after ${SMTP_TIMEOUT_MS}ms`)), SMTP_TIMEOUT_MS);
+    }),
+  ]);
 }
 
 function resolveCategory(category: unknown, subject: string, message: string): ContactCategory {
@@ -61,6 +239,108 @@ function resolveCategory(category: unknown, subject: string, message: string): C
   return 'info';
 }
 
+async function sendMailWithFallback(
+  category: ContactCategory,
+  mailOptions: nodemailer.SendMailOptions,
+  label: string
+) {
+  const categoryAuth = getCategorySmtpAuth(category);
+  const globalAuth = getGlobalSmtpAuth();
+
+  const categoryTransporter = createTransporter(categoryAuth);
+  const shouldTryGlobalFallback = !!globalAuth.user && !!globalAuth.pass && (
+    globalAuth.user !== categoryAuth.user || globalAuth.pass !== categoryAuth.pass
+  );
+  const globalTransporter = shouldTryGlobalFallback ? createTransporter(globalAuth) : null;
+
+  let lastError: unknown;
+
+  if (categoryTransporter) {
+    try {
+      await withTimeout(categoryTransporter.sendMail({
+        ...mailOptions,
+        // Align sender identity with authenticated mailbox to satisfy SMTP sender policies.
+        from: `"HOCFAM Contact Form" <${categoryAuth.user}>`,
+      }), `${label} (category SMTP)`);
+      return;
+    } catch (error) {
+      const normalizedError = normalizeSmtpError(error);
+      lastError = normalizedError;
+      console.error(`${label} failed with category SMTP credentials`, {
+        mailbox: categoryAuth.user,
+        error: normalizedError,
+      });
+
+      if (isConnectionLevelError(normalizedError) && (SMTP_FALLBACK_PORT !== SMTP_PORT || SMTP_FALLBACK_SECURE !== SMTP_SECURE)) {
+        const categoryFallbackTransporter = createTransporter(categoryAuth, SMTP_FALLBACK_PORT, SMTP_FALLBACK_SECURE);
+        if (categoryFallbackTransporter) {
+          try {
+            await withTimeout(categoryFallbackTransporter.sendMail({
+              ...mailOptions,
+              from: `"HOCFAM Contact Form" <${categoryAuth.user}>`,
+            }), `${label} (category SMTP transport fallback)`);
+            return;
+          } catch (fallbackError) {
+            const normalizedFallbackError = normalizeSmtpError(fallbackError);
+            lastError = normalizedFallbackError;
+            console.error(`${label} failed with category SMTP transport fallback`, {
+              mailbox: categoryAuth.user,
+              error: normalizedFallbackError,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (globalTransporter && globalAuth.user) {
+    try {
+      await withTimeout(globalTransporter.sendMail({
+        ...mailOptions,
+        // On fallback, always send as the fallback authenticated mailbox.
+        from: `"HOCFAM Contact Form" <${globalAuth.user}>`,
+      }), `${label} (global SMTP fallback)`);
+      return;
+    } catch (error) {
+      const normalizedError = normalizeSmtpError(error);
+      lastError = normalizedError;
+      console.error(`${label} failed with global SMTP fallback credentials`, {
+        mailbox: globalAuth.user,
+        error: normalizedError,
+      });
+
+      if (isConnectionLevelError(normalizedError) && (SMTP_FALLBACK_PORT !== SMTP_PORT || SMTP_FALLBACK_SECURE !== SMTP_SECURE)) {
+        const globalTransportFallback = createTransporter(globalAuth, SMTP_FALLBACK_PORT, SMTP_FALLBACK_SECURE);
+        if (globalTransportFallback) {
+          try {
+            await withTimeout(globalTransportFallback.sendMail({
+              ...mailOptions,
+              from: `"HOCFAM Contact Form" <${globalAuth.user}>`,
+            }), `${label} (global SMTP transport fallback)`);
+            return;
+          } catch (fallbackError) {
+            const normalizedFallbackError = normalizeSmtpError(fallbackError);
+            lastError = normalizedFallbackError;
+            console.error(`${label} failed with global SMTP transport fallback`, {
+              mailbox: globalAuth.user,
+              error: normalizedFallbackError,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  if (RESEND_API_KEY) {
+    const resendSent = await sendViaResend(mailOptions, label);
+    if (resendSent) {
+      return;
+    }
+  }
+
+  throw lastError || new Error(`${label} could not be sent because no valid SMTP transporter is available`);
+}
+
 router.post('/', async (req, res) => {
   try {
     const { name, email, phone, subject, message, category } = req.body;
@@ -72,17 +352,13 @@ router.post('/', async (req, res) => {
     const resolvedCategory = resolveCategory(category, subject, message);
     const recipient = orgMailboxes[resolvedCategory];
     const senderAuth = getCategorySmtpAuth(resolvedCategory);
-    const transporter = getCategoryTransporter(resolvedCategory);
 
     const [result]: any = await pool.execute(
       'INSERT INTO contact_messages (name, email, phone, subject, message) VALUES (?, ?, ?, ?, ?)',
       [name, email, phone, subject, message]
     );
 
-    let emailDelivered = true;
-
-    try {
-      await transporter.sendMail({
+    const adminMailPromise = sendMailWithFallback(resolvedCategory, {
         from: `"HOCFAM Contact Form" <${senderAuth.user || orgMailboxes.info}>`,
         to: recipient,
         replyTo: email,
@@ -98,9 +374,10 @@ router.post('/', async (req, res) => {
           <hr />
           <p>${String(message).replace(/\n/g, '<br/>')}</p>
         `,
-      });
+      }, 'Admin contact notification email');
 
-      await transporter.sendMail({
+    // Confirmation email is best-effort and should not delay API response.
+    void sendMailWithFallback(resolvedCategory, {
         from: `"Household Of Covenant And Faith Apostolic Ministry" <${senderAuth.user || orgMailboxes.info}>`,
         to: email,
         subject: 'We received your message',
@@ -111,11 +388,32 @@ router.post('/', async (req, res) => {
           <p><strong>Your subject:</strong> ${subject}</p>
           <p>Blessings,<br/>HOCFAM Team</p>
         `,
-      });
+      }, 'Sender confirmation email').catch((confirmationError) => {
+      console.error('Sender confirmation email failed (non-blocking):', normalizeSmtpError(confirmationError));
+    });
+
+    let adminEmailDelivered = true;
+    let adminSmtpError: ReturnType<typeof normalizeSmtpError> | undefined;
+
+    try {
+      await Promise.race([
+        adminMailPromise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`Admin contact notification wait timed out after ${SMTP_BLOCKING_WAIT_MS}ms`)), SMTP_BLOCKING_WAIT_MS);
+        }),
+      ]);
     } catch (emailError) {
-      console.error('Contact email dispatch failed:', emailError);
-      emailDelivered = false;
+      adminSmtpError = normalizeSmtpError(emailError);
+      console.error('Contact email dispatch failed:', adminSmtpError);
+      adminEmailDelivered = false;
+
+      // Continue trying admin delivery in background.
+      void adminMailPromise.catch((backgroundError) => {
+        console.error('Background admin email delivery failed:', normalizeSmtpError(backgroundError));
+      });
     }
+
+    const emailDelivered = adminEmailDelivered;
 
     const responsePayload = {
       message: 'Message sent successfully',
@@ -123,7 +421,9 @@ router.post('/', async (req, res) => {
       routedTo: recipient,
       category: resolvedCategory,
       emailDelivered,
-      warning: emailDelivered ? undefined : 'Message was saved, but email delivery failed. Please check SMTP credentials and logs.',
+      warning: emailDelivered
+        ? undefined
+        : `Message was saved, but delivery to church mailbox failed. ${buildSmtpHint(adminSmtpError)}`,
     };
 
     if (!emailDelivered) {
@@ -132,6 +432,7 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(responsePayload);
   } catch (error) {
+    console.error('Contact route failed:', error);
     res.status(500).json({ message: 'Failed to send message' });
   }
 });

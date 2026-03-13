@@ -74,6 +74,10 @@ const allowedOrigins = [
   ...configuredOrigins,
 ].filter(Boolean);
 
+const isAllowedVercelPreviewOrigin = (origin: string) => {
+  return /^https:\/\/covenant-[a-z0-9-]+-oluwatunmises-projects\.vercel\.app$/i.test(origin);
+};
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, server-to-server)
@@ -83,6 +87,9 @@ app.use(cors({
       return callback(null, true);
     }
     if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    if (isAllowedVercelPreviewOrigin(origin)) {
       return callback(null, true);
     }
     return callback(new Error(`CORS: origin ${origin} not allowed`));

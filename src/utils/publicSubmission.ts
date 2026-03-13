@@ -1,10 +1,44 @@
 import nodemailer from 'nodemailer';
 import pool from '../config/database';
 
+function parseEnvNumber(rawValue: string | undefined, fallback: number): number {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const normalized = rawValue.trim().replace(/^['\"]|['\"]$/g, '');
+  const firstNumericMatch = normalized.match(/\d+/);
+  if (!firstNumericMatch) {
+    return fallback;
+  }
+
+  const parsed = parseInt(firstNumericMatch[0], 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseEnvBoolean(rawValue: string | undefined, fallback: boolean): boolean {
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const normalized = rawValue.trim().replace(/^['\"]|['\"]$/g, '').toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['false', '0', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
+}
+
+const SMTP_PORT = parseEnvNumber(process.env.EMAIL_PORT, 587);
+const SMTP_SECURE = parseEnvBoolean(process.env.EMAIL_SECURE, false);
+
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.zoho.com',
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: (process.env.EMAIL_SECURE || 'false') === 'true',
+  port: SMTP_PORT,
+  secure: SMTP_SECURE,
   auth: {
     user: process.env.EMAIL_INFO_USER || process.env.EMAIL_USER,
     pass: process.env.EMAIL_INFO_PASSWORD || process.env.EMAIL_PASSWORD,
