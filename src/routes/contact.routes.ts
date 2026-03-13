@@ -49,6 +49,8 @@ const SMTP_FALLBACK_PORT = parseEnvNumber(process.env.EMAIL_FALLBACK_PORT, 465);
 const SMTP_FALLBACK_SECURE = parseEnvBoolean(process.env.EMAIL_FALLBACK_SECURE, true);
 const SMTP_DEBUG = parseEnvBoolean(process.env.SMTP_DEBUG, false);
 const SMTP_SINGLE_ACCOUNT = parseEnvBoolean(process.env.SMTP_SINGLE_ACCOUNT, true);
+const SMTP_USE_ORG_FROM = parseEnvBoolean(process.env.SMTP_USE_ORG_FROM, false);
+const SMTP_FROM_ADDRESS = process.env.SMTP_FROM_ADDRESS || '';
 const SMTP_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
 const SMTP_FAILURE_COOLDOWN_MS = parseEnvNumber(process.env.SMTP_FAILURE_COOLDOWN_MS, 60000);
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -104,6 +106,17 @@ function createTransporter(auth: SmtpAuth, port = SMTP_PORT, secure = SMTP_SECUR
       pass: auth.pass,
     },
   });
+}
+
+/**
+ * Return the SMTP "from" address to use.
+ * Priority: SMTP_FROM_ADDRESS env (explicit override) → SMTP_USE_ORG_FROM (org mailbox for category)
+ * → authenticated SMTP user → info fallback.
+ */
+function resolveSmtpFrom(authUser: string | undefined, category: ContactCategory): string {
+  if (SMTP_FROM_ADDRESS) return SMTP_FROM_ADDRESS;
+  if (SMTP_USE_ORG_FROM) return orgMailboxes[category];
+  return authUser || orgMailboxes.info;
 }
 
 function normalizeSmtpError(error: unknown) {
@@ -330,8 +343,7 @@ async function sendMailWithFallback(
     try {
       await withTimeout(categoryTransporter.sendMail({
         ...mailOptions,
-        // Align sender identity with authenticated mailbox to satisfy SMTP sender policies.
-        from: `"HOCFAM Contact Form" <${categoryAuth.user}>`,
+        from: `"HOCFAM Contact Form" <${resolveSmtpFrom(categoryAuth.user, category)}>`,
       }), `${label} (category SMTP)`);
       return;
     } catch (error) {
@@ -351,7 +363,7 @@ async function sendMailWithFallback(
           try {
             await withTimeout(categoryFallbackTransporter.sendMail({
               ...mailOptions,
-              from: `"HOCFAM Contact Form" <${categoryAuth.user}>`,
+              from: `"HOCFAM Contact Form" <${resolveSmtpFrom(categoryAuth.user, category)}>`,
             }), `${label} (category SMTP transport fallback)`);
             return;
           } catch (fallbackError) {
@@ -374,8 +386,7 @@ async function sendMailWithFallback(
     try {
       await withTimeout(globalTransporter.sendMail({
         ...mailOptions,
-        // On fallback, always send as the fallback authenticated mailbox.
-        from: `"HOCFAM Contact Form" <${globalAuth.user}>`,
+        from: `"HOCFAM Contact Form" <${resolveSmtpFrom(globalAuth.user, category)}>`,
       }), `${label} (global SMTP fallback)`);
       return;
     } catch (error) {
@@ -395,7 +406,7 @@ async function sendMailWithFallback(
           try {
             await withTimeout(globalTransportFallback.sendMail({
               ...mailOptions,
-              from: `"HOCFAM Contact Form" <${globalAuth.user}>`,
+              from: `"HOCFAM Contact Form" <${resolveSmtpFrom(globalAuth.user, category)}>`,
             }), `${label} (global SMTP transport fallback)`);
             return;
           } catch (fallbackError) {
