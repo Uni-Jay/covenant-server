@@ -50,8 +50,11 @@ const SMTP_FALLBACK_SECURE = parseEnvBoolean(process.env.EMAIL_FALLBACK_SECURE, 
 const SMTP_DEBUG = parseEnvBoolean(process.env.SMTP_DEBUG, false);
 const SMTP_SINGLE_ACCOUNT = parseEnvBoolean(process.env.SMTP_SINGLE_ACCOUNT, true);
 const SMTP_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
+const SMTP_FAILURE_COOLDOWN_MS = parseEnvNumber(process.env.SMTP_FAILURE_COOLDOWN_MS, 60000);
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_USER || 'admin@hocfam.org';
+
+let smtpBackoffUntil = 0;
 
 type ContactCategory = 'admin' | 'info' | 'support' | 'media';
 
@@ -104,6 +107,26 @@ function createTransporter(auth: SmtpAuth, port = SMTP_PORT, secure = SMTP_SECUR
 }
 
 function normalizeSmtpError(error: unknown) {
+  if (typeof error === 'object' && error !== null) {
+    const errorObject = error as {
+      message?: unknown;
+      code?: unknown;
+      command?: unknown;
+      response?: unknown;
+      responseCode?: unknown;
+    };
+
+    return {
+      message: typeof errorObject.message === 'string'
+        ? errorObject.message
+        : JSON.stringify(errorObject),
+      code: typeof errorObject.code === 'string' ? errorObject.code : undefined,
+      command: typeof errorObject.command === 'string' ? errorObject.command : undefined,
+      responseCode: typeof errorObject.responseCode === 'number' ? errorObject.responseCode : undefined,
+      response: typeof errorObject.response === 'string' ? errorObject.response : undefined,
+    };
+  }
+
   if (!(error instanceof Error)) {
     return {
       message: String(error),
@@ -124,6 +147,23 @@ function normalizeSmtpError(error: unknown) {
     responseCode: errorWithMeta.responseCode,
     response: errorWithMeta.response,
   };
+}
+
+function isTransientSmtpError(error: ReturnType<typeof normalizeSmtpError>): boolean {
+  return isConnectionLevelError(error) || /timeout|timed out/i.test(error.message || '');
+}
+
+function isSmtpBackoffActive(): boolean {
+  return smtpBackoffUntil > Date.now();
+}
+
+function activateSmtpBackoff(error: ReturnType<typeof normalizeSmtpError>) {
+  smtpBackoffUntil = Date.now() + SMTP_FAILURE_COOLDOWN_MS;
+  console.warn('SMTP backoff activated', {
+    cooldownMs: SMTP_FAILURE_COOLDOWN_MS,
+    until: new Date(smtpBackoffUntil).toISOString(),
+    error,
+  });
 }
 
 function buildSmtpHint(error: ReturnType<typeof normalizeSmtpError> | undefined): string {
@@ -211,7 +251,15 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timed out after ${SMTP_TIMEOUT_MS}ms`)), SMTP_TIMEOUT_MS);
+      setTimeout(() => {
+        const timeoutError = new Error(`${label} timed out after ${SMTP_TIMEOUT_MS}ms`) as Error & {
+          code?: string;
+          command?: string;
+        };
+        timeoutError.code = 'ETIMEDOUT';
+        timeoutError.command = 'CONN';
+        reject(timeoutError);
+      }, SMTP_TIMEOUT_MS);
     }),
   ]);
 }
@@ -244,6 +292,21 @@ async function sendMailWithFallback(
   mailOptions: nodemailer.SendMailOptions,
   label: string
 ) {
+  if (isSmtpBackoffActive()) {
+    if (RESEND_API_KEY) {
+      const resendSent = await sendViaResend(mailOptions, `${label} (SMTP backoff)`);
+      if (resendSent) {
+        return;
+      }
+    }
+
+    throw {
+      message: `SMTP temporarily paused. Backoff active for ${Math.max(0, smtpBackoffUntil - Date.now())}ms`,
+      code: 'SMTP_BACKOFF',
+      command: 'CONN',
+    };
+  }
+
   const categoryAuth = getCategorySmtpAuth(category);
   const globalAuth = getGlobalSmtpAuth();
 
@@ -266,6 +329,9 @@ async function sendMailWithFallback(
     } catch (error) {
       const normalizedError = normalizeSmtpError(error);
       lastError = normalizedError;
+      if (isTransientSmtpError(normalizedError)) {
+        activateSmtpBackoff(normalizedError);
+      }
       console.error(`${label} failed with category SMTP credentials`, {
         mailbox: categoryAuth.user,
         error: normalizedError,
@@ -283,6 +349,9 @@ async function sendMailWithFallback(
           } catch (fallbackError) {
             const normalizedFallbackError = normalizeSmtpError(fallbackError);
             lastError = normalizedFallbackError;
+            if (isTransientSmtpError(normalizedFallbackError)) {
+              activateSmtpBackoff(normalizedFallbackError);
+            }
             console.error(`${label} failed with category SMTP transport fallback`, {
               mailbox: categoryAuth.user,
               error: normalizedFallbackError,
@@ -304,6 +373,9 @@ async function sendMailWithFallback(
     } catch (error) {
       const normalizedError = normalizeSmtpError(error);
       lastError = normalizedError;
+      if (isTransientSmtpError(normalizedError)) {
+        activateSmtpBackoff(normalizedError);
+      }
       console.error(`${label} failed with global SMTP fallback credentials`, {
         mailbox: globalAuth.user,
         error: normalizedError,
@@ -321,6 +393,9 @@ async function sendMailWithFallback(
           } catch (fallbackError) {
             const normalizedFallbackError = normalizeSmtpError(fallbackError);
             lastError = normalizedFallbackError;
+            if (isTransientSmtpError(normalizedFallbackError)) {
+              activateSmtpBackoff(normalizedFallbackError);
+            }
             console.error(`${label} failed with global SMTP transport fallback`, {
               mailbox: globalAuth.user,
               error: normalizedFallbackError,
