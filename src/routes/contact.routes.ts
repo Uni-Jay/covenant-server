@@ -453,7 +453,7 @@ router.post('/', async (req, res) => {
     );
 
     const adminMailPromise = sendMailWithFallback(resolvedCategory, {
-        from: `"HOCFAM Contact Form" <${senderAuth.user || orgMailboxes.info}>`,
+        from: `"${name} via HOCFAM" <${resolveSmtpFrom(senderAuth.user, resolvedCategory)}>`,
         to: recipient,
         replyTo: email,
         subject: `[Contact:${resolvedCategory.toUpperCase()}] ${subject}`,

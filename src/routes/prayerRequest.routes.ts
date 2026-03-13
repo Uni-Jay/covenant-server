@@ -6,11 +6,16 @@ import nodemailer from 'nodemailer';
 const router = Router();
 
 const prayerAdminRecipient = process.env.PRAYER_REQUEST_EMAIL || 'admin@hocfam.org';
+const PRAYER_SMTP_TIMEOUT_MS = parseInt((process.env.SMTP_TIMEOUT_MS || '2500').replace(/[^0-9]/g, '') || '2500', 10);
+const PRAYER_BLOCKING_WAIT_MS = parseInt((process.env.SMTP_BLOCKING_WAIT_MS || '2500').replace(/[^0-9]/g, '') || '2500', 10);
 
 const prayerTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.zoho.com',
   port: parseInt(process.env.EMAIL_PORT || '587'),
   secure: (process.env.EMAIL_SECURE || 'false') === 'true',
+  connectionTimeout: PRAYER_SMTP_TIMEOUT_MS,
+  greetingTimeout: PRAYER_SMTP_TIMEOUT_MS,
+  socketTimeout: PRAYER_SMTP_TIMEOUT_MS,
   auth: {
     user: process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER,
     pass: process.env.EMAIL_ADMIN_PASSWORD || process.env.EMAIL_PASSWORD,
@@ -90,10 +95,11 @@ router.post('/', async (req, res) => {
 
     // Website submissions should notify admin mailbox; mobile keeps previous behavior (DB save only).
     if (source === 'website') {
-      let emailDelivered = true;
-      try {
-        await prayerTransporter.sendMail({
-          from: `"HOCFAM Prayer Request" <${process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org'}>`,
+      const senderDisplay = isAnonymous ? 'Anonymous Prayer Request' : `${name || 'Someone'} via HOCFAM`;
+      const senderEmail = process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org';
+
+      const mailPromise = prayerTransporter.sendMail({
+          from: `"${senderDisplay}" <${senderEmail}>`,
           to: prayerAdminRecipient,
           replyTo: isAnonymous ? undefined : email,
           subject: `[Prayer Request] ${String(category || 'general').toUpperCase()}${isUrgent ? ' - URGENT' : ''}`,
@@ -110,24 +116,28 @@ router.post('/', async (req, res) => {
             <p>${String(finalRequest || '').replace(/\n/g, '<br/>')}</p>
           `,
         });
+
+      let emailDelivered = true;
+      try {
+        await Promise.race([
+          mailPromise,
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error(`Prayer email wait timed out after ${PRAYER_BLOCKING_WAIT_MS}ms`)), PRAYER_BLOCKING_WAIT_MS);
+          }),
+        ]);
       } catch (mailError) {
-        console.error('Prayer request email dispatch failed:', mailError);
+        console.error('Prayer request email dispatch failed:', mailError instanceof Error ? mailError.message : String(mailError));
         emailDelivered = false;
+        void mailPromise.catch(() => undefined);
       }
 
-      const payload = {
+      return res.status(emailDelivered ? 201 : 202).json({
         message: 'Prayer request submitted',
         id: result.insertId,
         routedTo: prayerAdminRecipient,
         emailDelivered,
         warning: emailDelivered ? undefined : 'Prayer request saved, but email delivery failed. Please check SMTP credentials and logs.',
-      };
-
-      if (!emailDelivered) {
-        return res.status(202).json(payload);
-      }
-
-      return res.status(201).json(payload);
+      });
     }
 
     res.status(201).json({ message: 'Prayer request submitted', id: result.insertId });
