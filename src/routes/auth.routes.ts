@@ -48,18 +48,6 @@ function parseEnvNumber(rawValue: string | undefined, fallback: number): number 
 
 const EMAIL_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
 
-async function waitForEmailConfirmation(emailPromise: Promise<boolean>, label: string): Promise<boolean> {
-  return Promise.race([
-    emailPromise,
-    new Promise<boolean>((resolve) => {
-      setTimeout(() => {
-        console.warn(`${label} is still pending after ${EMAIL_BLOCKING_WAIT_MS}ms; returning without blocking request.`);
-        resolve(false);
-      }, EMAIL_BLOCKING_WAIT_MS);
-    }),
-  ]);
-}
-
 // Register
 router.post('/register', async (req, res) => {
   try {
@@ -604,18 +592,17 @@ router.post('/forgot-password', async (req, res) => {
 
     // Send reset email
     const firstName = user.first_name || 'Friend';
-    const emailDelivered = await waitForEmailConfirmation(
+    void Promise.race([
       sendPasswordResetEmail(user.email, firstName, resetToken),
-      `Password reset email to ${user.email}`
-    );
-
-    if (!emailDelivered) {
-      return res.status(202).json({
-        message: 'If an account exists with this email, a password reset request was created, but email delivery could not be confirmed.',
-        emailDelivered: false,
-        warning: 'Please check SMTP credentials and Railway logs.',
-      });
-    }
+      new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          console.warn(`Password reset email to ${user.email} is still pending after ${EMAIL_BLOCKING_WAIT_MS}ms; continuing without blocking request.`);
+          resolve(false);
+        }, EMAIL_BLOCKING_WAIT_MS);
+      }),
+    ]).catch((emailError) => {
+      console.error(`Password reset email failed for ${user.email}:`, emailError);
+    });
 
     res.json({ 
       message: 'If an account exists with this email, a password reset link has been sent.',
@@ -684,18 +671,17 @@ router.post('/reset-password', async (req, res) => {
 
     // Send password changed notification
     const firstName = user.first_name || 'Friend';
-    const emailDelivered = await waitForEmailConfirmation(
+    void Promise.race([
       sendPasswordChangedEmail(user.email, firstName),
-      `Password changed confirmation email to ${user.email}`
-    );
-
-    if (!emailDelivered) {
-      return res.status(202).json({
-        message: 'Password has been reset successfully, but confirmation email delivery could not be confirmed.',
-        emailDelivered: false,
-        warning: 'Please check SMTP credentials and Railway logs.',
-      });
-    }
+      new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          console.warn(`Password changed confirmation email to ${user.email} is still pending after ${EMAIL_BLOCKING_WAIT_MS}ms; continuing without blocking request.`);
+          resolve(false);
+        }, EMAIL_BLOCKING_WAIT_MS);
+      }),
+    ]).catch((emailError) => {
+      console.error(`Password changed confirmation email failed for ${user.email}:`, emailError);
+    });
 
     res.json({ message: 'Password has been reset successfully', emailDelivered: true });
   } catch (error) {
