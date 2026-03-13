@@ -146,17 +146,57 @@ router.post('/', async (req, res) => {
       const senderDisplay = isAnonymous ? 'Anonymous Prayer Request' : `${name || 'Someone'} via HOCFAM`;
       const senderEmail = process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org';
       const prayerSubject = `[Prayer Request] ${String(category || 'general').toUpperCase()}${isUrgent ? ' - URGENT' : ''}`;
+      const formattedPrayer = String(finalRequest || '').replace(/\n/g, '<br/>');
       const prayerHtml = `
-            <h2>New Prayer Request</h2>
-            <p><strong>Source:</strong> Website</p>
-            <p><strong>Category:</strong> ${category || 'general'}</p>
-            <p><strong>Anonymous:</strong> ${isAnonymous ? 'Yes' : 'No'}</p>
-            <p><strong>Urgent:</strong> ${isUrgent ? 'Yes' : 'No'}</p>
-            <p><strong>Name:</strong> ${isAnonymous ? 'Anonymous' : (name || 'Not provided')}</p>
-            <p><strong>Email:</strong> ${isAnonymous ? 'Anonymous' : (email || 'Not provided')}</p>
-            <p><strong>Phone:</strong> ${isAnonymous ? 'Anonymous' : (finalPhone || 'Not provided')}</p>
-            <hr />
-            <p>${String(finalRequest || '').replace(/\n/g, '<br/>')}</p>
+            <div style="margin:0;padding:24px;background:#f4f7fb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
+              <table role="presentation" style="width:100%;max-width:700px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;border-collapse:separate;">
+                <tr>
+                  <td style="padding:20px 24px;background:#0d5f45;color:#ffffff;">
+                    <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">HOCFAM Prayer Desk</div>
+                    <h2 style="margin:8px 0 0;font-size:22px;line-height:1.3;">New Prayer Request</h2>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="margin:0 0 14px;font-size:14px;color:#334155;">A prayer request has been submitted from the website.</p>
+                    <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;">
+                      <tr>
+                        <td style="padding:8px 0;color:#475569;width:140px;"><strong>Category</strong></td>
+                        <td style="padding:8px 0;color:#0f172a;text-transform:capitalize;">${category || 'general'}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;color:#475569;"><strong>Source</strong></td>
+                        <td style="padding:8px 0;color:#0f172a;">Website</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;color:#475569;"><strong>Urgent</strong></td>
+                        <td style="padding:8px 0;color:#0f172a;">${isUrgent ? 'Yes' : 'No'}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;color:#475569;"><strong>Anonymous</strong></td>
+                        <td style="padding:8px 0;color:#0f172a;">${isAnonymous ? 'Yes' : 'No'}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;color:#475569;"><strong>Name</strong></td>
+                        <td style="padding:8px 0;color:#0f172a;">${isAnonymous ? 'Anonymous' : (name || 'Not provided')}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;color:#475569;"><strong>Email</strong></td>
+                        <td style="padding:8px 0;color:#0f172a;">${isAnonymous ? 'Anonymous' : (email || 'Not provided')}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;color:#475569;"><strong>Phone</strong></td>
+                        <td style="padding:8px 0;color:#0f172a;">${isAnonymous ? 'Anonymous' : (finalPhone || 'Not provided')}</td>
+                      </tr>
+                    </table>
+                    <div style="margin-top:16px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                      <div style="margin:0 0 8px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#64748b;">Prayer Request</div>
+                      <div style="font-size:14px;line-height:1.65;color:#0f172a;">${formattedPrayer}</div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
           `;
 
       if (PRAYER_RESEND_ONLY_MODE && !PRAYER_SMTP_ONLY_MODE) {

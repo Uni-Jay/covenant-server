@@ -467,21 +467,59 @@ router.post('/', async (req, res) => {
       [name, email, phone, subject, message]
     );
 
+    const formattedMessage = String(message).replace(/\n/g, '<br/>');
+
     const adminMailPromise = sendMailWithFallback(resolvedCategory, {
         from: `"${name} via HOCFAM" <${resolveSmtpFrom(senderAuth.user, resolvedCategory)}>`,
         to: recipient,
         replyTo: email,
         subject: `[Contact:${resolvedCategory.toUpperCase()}] ${subject}`,
         html: `
-          <h2>New Contact Message</h2>
-          <p><strong>Routed To:</strong> ${recipient}</p>
-          <p><strong>Category:</strong> ${resolvedCategory}</p>
-          <p><strong>Name:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
-          <p><strong>Subject:</strong> ${subject}</p>
-          <hr />
-          <p>${String(message).replace(/\n/g, '<br/>')}</p>
+          <div style="margin:0;padding:24px;background:#f4f7fb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
+            <table role="presentation" style="width:100%;max-width:700px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;border-collapse:separate;">
+              <tr>
+                <td style="padding:20px 24px;background:#0b3b8f;color:#ffffff;">
+                  <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">HOCFAM Contact Desk</div>
+                  <h2 style="margin:8px 0 0;font-size:22px;line-height:1.3;">New Contact Message</h2>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 24px;">
+                  <p style="margin:0 0 14px;font-size:14px;color:#334155;">A new website message has been routed for follow-up.</p>
+                  <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;">
+                    <tr>
+                      <td style="padding:8px 0;color:#475569;width:140px;"><strong>Routed To</strong></td>
+                      <td style="padding:8px 0;color:#0f172a;">${recipient}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;color:#475569;"><strong>Category</strong></td>
+                      <td style="padding:8px 0;color:#0f172a;text-transform:capitalize;">${resolvedCategory}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;color:#475569;"><strong>Name</strong></td>
+                      <td style="padding:8px 0;color:#0f172a;">${name}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;color:#475569;"><strong>Email</strong></td>
+                      <td style="padding:8px 0;color:#0f172a;">${email}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;color:#475569;"><strong>Phone</strong></td>
+                      <td style="padding:8px 0;color:#0f172a;">${phone || 'Not provided'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:8px 0;color:#475569;"><strong>Subject</strong></td>
+                      <td style="padding:8px 0;color:#0f172a;">${subject}</td>
+                    </tr>
+                  </table>
+                  <div style="margin-top:16px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                    <div style="margin:0 0 8px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#64748b;">Message</div>
+                    <div style="font-size:14px;line-height:1.65;color:#0f172a;">${formattedMessage}</div>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
         `,
       }, 'Admin contact notification email');
 
@@ -512,11 +550,27 @@ router.post('/', async (req, res) => {
           to: email,
           subject: 'We received your message',
           html: `
-            <p>Hi ${name},</p>
-            <p>Thank you for contacting Household Of Covenant And Faith Apostolic Ministry.</p>
-            <p>Your message has been received and routed to our ${resolvedCategory} team. We will get back to you shortly.</p>
-            <p><strong>Your subject:</strong> ${subject}</p>
-            <p>Blessings,<br/>HOCFAM Team</p>
+            <div style="margin:0;padding:24px;background:#f4f7fb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
+              <table role="presentation" style="width:100%;max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;border-collapse:separate;">
+                <tr>
+                  <td style="padding:20px 24px;background:#0b3b8f;color:#ffffff;">
+                    <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">Household Of Covenant And Faith</div>
+                    <h2 style="margin:8px 0 0;font-size:22px;line-height:1.3;">We Received Your Message</h2>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#0f172a;">Hi ${name},</p>
+                    <p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#334155;">Thank you for contacting Household Of Covenant And Faith Apostolic Ministry.</p>
+                    <p style="margin:0 0 14px;font-size:14px;line-height:1.65;color:#334155;">Your request has been received and routed to our <strong style="text-transform:capitalize;color:#0f172a;">${resolvedCategory}</strong> team. We will get back to you shortly.</p>
+                    <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;color:#0f172a;">
+                      <strong>Subject:</strong> ${subject}
+                    </div>
+                    <p style="margin:18px 0 0;font-size:14px;line-height:1.65;color:#334155;">Blessings,<br/>HOCFAM Team</p>
+                  </td>
+                </tr>
+              </table>
+            </div>
           `,
         }, 'Sender confirmation email').catch((confirmationError) => {
         console.error('Sender confirmation email failed (non-blocking):', normalizeSmtpError(confirmationError));
