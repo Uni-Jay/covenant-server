@@ -1,8 +1,21 @@
 import { Router } from 'express';
 import pool from '../config/database';
 import { authenticate, isAdmin } from '../middleware/auth.middleware';
+import nodemailer from 'nodemailer';
 
 const router = Router();
+
+const prayerAdminRecipient = process.env.PRAYER_REQUEST_EMAIL || 'admin@hocfam.org';
+
+const prayerTransporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.zoho.com',
+  port: parseInt(process.env.EMAIL_PORT || '587'),
+  secure: (process.env.EMAIL_SECURE || 'false') === 'true',
+  auth: {
+    user: process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER,
+    pass: process.env.EMAIL_ADMIN_PASSWORD || process.env.EMAIL_PASSWORD,
+  },
+});
 
 // Get all prayer requests (admin/media only)
 router.get('/all', authenticate, async (req, res) => {
@@ -64,7 +77,7 @@ router.get('/my-prayers', authenticate, async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { name, email, phoneNumber, phone, requestText, request, category, isAnonymous, isUrgent } = req.body;
+    const { name, email, phoneNumber, phone, requestText, request, category, isAnonymous, isUrgent, source } = req.body;
     
     // Support both field name formats
     const finalPhone = phoneNumber || phone;
@@ -74,6 +87,49 @@ router.post('/', async (req, res) => {
       'INSERT INTO prayer_requests (name, email, phone, request, category, is_anonymous) VALUES (?, ?, ?, ?, ?, ?)',
       [isAnonymous ? null : name, isAnonymous ? null : email, isAnonymous ? null : finalPhone, finalRequest, category, isAnonymous || false]
     );
+
+    // Website submissions should notify admin mailbox; mobile keeps previous behavior (DB save only).
+    if (source === 'website') {
+      let emailDelivered = true;
+      try {
+        await prayerTransporter.sendMail({
+          from: `"HOCFAM Prayer Request" <${process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org'}>`,
+          to: prayerAdminRecipient,
+          replyTo: isAnonymous ? undefined : email,
+          subject: `[Prayer Request] ${String(category || 'general').toUpperCase()}${isUrgent ? ' - URGENT' : ''}`,
+          html: `
+            <h2>New Prayer Request</h2>
+            <p><strong>Source:</strong> Website</p>
+            <p><strong>Category:</strong> ${category || 'general'}</p>
+            <p><strong>Anonymous:</strong> ${isAnonymous ? 'Yes' : 'No'}</p>
+            <p><strong>Urgent:</strong> ${isUrgent ? 'Yes' : 'No'}</p>
+            <p><strong>Name:</strong> ${isAnonymous ? 'Anonymous' : (name || 'Not provided')}</p>
+            <p><strong>Email:</strong> ${isAnonymous ? 'Anonymous' : (email || 'Not provided')}</p>
+            <p><strong>Phone:</strong> ${isAnonymous ? 'Anonymous' : (finalPhone || 'Not provided')}</p>
+            <hr />
+            <p>${String(finalRequest || '').replace(/\n/g, '<br/>')}</p>
+          `,
+        });
+      } catch (mailError) {
+        console.error('Prayer request email dispatch failed:', mailError);
+        emailDelivered = false;
+      }
+
+      const payload = {
+        message: 'Prayer request submitted',
+        id: result.insertId,
+        routedTo: prayerAdminRecipient,
+        emailDelivered,
+        warning: emailDelivered ? undefined : 'Prayer request saved, but email delivery failed. Please check SMTP credentials and logs.',
+      };
+
+      if (!emailDelivered) {
+        return res.status(202).json(payload);
+      }
+
+      return res.status(201).json(payload);
+    }
+
     res.status(201).json({ message: 'Prayer request submitted', id: result.insertId });
   } catch (error) {
     console.error('Prayer request submission error:', error);

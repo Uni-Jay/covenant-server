@@ -33,6 +33,7 @@ import attendanceRoutes from './routes/attendance.routes';
 import departmentsRoutes from './routes/departments.routes';
 import usersRoutes from './routes/users.routes';
 import aiRoutes from './routes/ai.routes';
+import contentRoutes from './routes/content.routes';
 
 // Load environment variables
 dotenv.config();
@@ -122,6 +123,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/departments', departmentsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/content', contentRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

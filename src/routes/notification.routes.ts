@@ -7,12 +7,14 @@ import nodemailer from 'nodemailer';
 
 const router = express.Router();
 
-// Email transporter configuration (using Gmail as example)
+// Email transporter configuration (provider-agnostic SMTP)
 const emailTransporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.EMAIL_HOST || 'smtp.zoho.com',
+  port: parseInt(process.env.EMAIL_PORT || '587'),
+  secure: (process.env.EMAIL_SECURE || 'false') === 'true',
   auth: {
-    user: process.env.EMAIL_USER || 'your-church-email@gmail.com',
-    pass: process.env.EMAIL_PASSWORD || 'your-app-password'
+    user: process.env.EMAIL_USER || 'noreply@hocfam.org',
+    pass: process.env.EMAIL_PASSWORD || ''
   }
 });
 

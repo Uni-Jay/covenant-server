@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../config/database';
 import { authenticate, isAdmin, isAdminOrMedia } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
+import { notifyPublicSubmission, savePublicSubmission } from '../utils/publicSubmission';
 
 const router = Router();
 
@@ -24,6 +25,56 @@ router.get('/', async (req, res) => {
     res.json(formattedEvents);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch events' });
+  }
+});
+
+router.post('/:id/register', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, numberOfSeats } = req.body;
+    const [events]: any = await pool.execute('SELECT title, date, time, location FROM events WHERE id = ?', [id]);
+
+    if (!events.length) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    const event = events[0];
+    const subject = `Event Registration - ${event.title}`;
+    const html = `
+      <h2>New Event Registration</h2>
+      <p><strong>Event:</strong> ${event.title}</p>
+      <p><strong>Date:</strong> ${event.date}</p>
+      <p><strong>Time:</strong> ${event.time || 'Not set'}</p>
+      <p><strong>Location:</strong> ${event.location || 'Not set'}</p>
+      <p><strong>Name:</strong> ${name}</p>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>Phone:</strong> ${phone || 'Not provided'}</p>
+      <p><strong>Seats:</strong> ${numberOfSeats || 1}</p>
+    `;
+
+    const insertId = await savePublicSubmission({
+      name,
+      email,
+      phone,
+      subject,
+      message: `Event registration for ${event.title} (${numberOfSeats || 1} seats)` ,
+    });
+    const emailDelivered = await notifyPublicSubmission({
+      name,
+      email,
+      phone,
+      subject,
+      message: html,
+      recipient: process.env.ORG_EMAIL_INFO || 'info@hocfam.org',
+    });
+
+    res.status(emailDelivered ? 201 : 202).json({
+      id: insertId,
+      message: 'Event registration submitted',
+      emailDelivered,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to submit event registration' });
   }
 });
 

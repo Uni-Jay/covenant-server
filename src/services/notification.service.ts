@@ -1,11 +1,13 @@
 import nodemailer from 'nodemailer';
 import pool from '../config/database';
 
+const APP_BASE_URL = (process.env.APP_URL || 'https://hocfam.org').replace(/\/$/, '');
+
 // Email configuration
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  host: process.env.EMAIL_HOST || 'smtp.zoho.com',
   port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: false,
+  secure: (process.env.EMAIL_SECURE || 'false') === 'true',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD,
@@ -105,8 +107,8 @@ const getMemberWelcomeEmail = (firstName: string) => `
       
       <h3>📱 Quick Links</h3>
       <p>
-        <a href="#" class="button">Download Mobile App</a>
-        <a href="#" class="button">View Events</a>
+        <a href="${APP_BASE_URL}" class="button">Download Mobile App</a>
+        <a href="${APP_BASE_URL}/events" class="button">View Events</a>
       </p>
       
       <h3>📞 Need Help?</h3>
@@ -167,7 +169,7 @@ const getFirstTimerWelcomeEmail = (firstName: string) => `
       <strong>Prayer Meetings:</strong> Fridays, 7:00 PM</p>
       
       <p>
-        <a href="#" class="button">View Our Events</a>
+        <a href="${APP_BASE_URL}/events" class="button">View Our Events</a>
       </p>
       
       <h3>💬 Stay Connected</h3>
@@ -329,7 +331,7 @@ export const sendPasswordResetEmail = async (
   resetToken: string
 ): Promise<boolean> => {
   try {
-    const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+    const resetUrl = `${APP_BASE_URL}/reset-password?token=${resetToken}`;
     
     const subject = '🔐 Password Reset Request - Household Of Covenant And Faith Apostolic Ministry';
     const htmlContent = `

@@ -575,10 +575,19 @@ router.post('/forgot-password', async (req, res) => {
 
     // Send reset email
     const firstName = user.first_name || 'Friend';
-    await sendPasswordResetEmail(user.email, firstName, resetToken);
+    const emailDelivered = await sendPasswordResetEmail(user.email, firstName, resetToken);
+
+    if (!emailDelivered) {
+      return res.status(202).json({
+        message: 'If an account exists with this email, a password reset request was created, but email delivery could not be confirmed.',
+        emailDelivered: false,
+        warning: 'Please check SMTP credentials and Railway logs.',
+      });
+    }
 
     res.json({ 
-      message: 'If an account exists with this email, a password reset link has been sent.' 
+      message: 'If an account exists with this email, a password reset link has been sent.',
+      emailDelivered: true,
     });
   } catch (error) {
     console.error('Forgot password error:', error);
@@ -643,9 +652,17 @@ router.post('/reset-password', async (req, res) => {
 
     // Send password changed notification
     const firstName = user.first_name || 'Friend';
-    await sendPasswordChangedEmail(user.email, firstName);
+    const emailDelivered = await sendPasswordChangedEmail(user.email, firstName);
 
-    res.json({ message: 'Password has been reset successfully' });
+    if (!emailDelivered) {
+      return res.status(202).json({
+        message: 'Password has been reset successfully, but confirmation email delivery could not be confirmed.',
+        emailDelivered: false,
+        warning: 'Please check SMTP credentials and Railway logs.',
+      });
+    }
+
+    res.json({ message: 'Password has been reset successfully', emailDelivered: true });
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ message: 'Failed to reset password' });
