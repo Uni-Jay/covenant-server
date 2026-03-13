@@ -13,6 +13,7 @@ const PRAYER_RESEND_ONLY_MODE = PRAYER_EMAIL_MODE === 'resend' || PRAYER_EMAIL_M
 const PRAYER_SMTP_ONLY_MODE = PRAYER_EMAIL_MODE === 'smtp';
 const PRAYER_RESEND_API_KEY = process.env.RESEND_API_KEY;
 const PRAYER_RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org';
+const MAIL_BRAND_LOGO_URL = process.env.MAIL_BRAND_LOGO_URL || 'https://hocfam.org/image/New_Logo.png';
 
 const prayerTransporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.zoho.com',
@@ -152,6 +153,7 @@ router.post('/', async (req, res) => {
               <table role="presentation" style="width:100%;max-width:700px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;border-collapse:separate;">
                 <tr>
                   <td style="padding:20px 24px;background:#0d5f45;color:#ffffff;">
+                    <img src="${MAIL_BRAND_LOGO_URL}" alt="HOCFAM Logo" style="display:block;width:56px;height:56px;object-fit:contain;background:#ffffff;border-radius:10px;padding:6px;margin-bottom:10px;" />
                     <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">HOCFAM Prayer Desk</div>
                     <h2 style="margin:8px 0 0;font-size:22px;line-height:1.3;">New Prayer Request</h2>
                   </td>

@@ -55,6 +55,7 @@ const SMTP_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 
 const SMTP_FAILURE_COOLDOWN_MS = parseEnvNumber(process.env.SMTP_FAILURE_COOLDOWN_MS, 60000);
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_USER || 'admin@hocfam.org';
+const MAIL_BRAND_LOGO_URL = process.env.MAIL_BRAND_LOGO_URL || 'https://hocfam.org/image/New_Logo.png';
 const EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
 const RESEND_ONLY_MODE = EMAIL_MODE === 'resend' || EMAIL_MODE === 'api';
 const SMTP_ONLY_MODE = EMAIL_MODE === 'smtp';
@@ -479,6 +480,7 @@ router.post('/', async (req, res) => {
             <table role="presentation" style="width:100%;max-width:700px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;border-collapse:separate;">
               <tr>
                 <td style="padding:20px 24px;background:#0b3b8f;color:#ffffff;">
+                  <img src="${MAIL_BRAND_LOGO_URL}" alt="HOCFAM Logo" style="display:block;width:56px;height:56px;object-fit:contain;background:#ffffff;border-radius:10px;padding:6px;margin-bottom:10px;" />
                   <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">HOCFAM Contact Desk</div>
                   <h2 style="margin:8px 0 0;font-size:22px;line-height:1.3;">New Contact Message</h2>
                 </td>
@@ -554,6 +556,7 @@ router.post('/', async (req, res) => {
               <table role="presentation" style="width:100%;max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;border-collapse:separate;">
                 <tr>
                   <td style="padding:20px 24px;background:#0b3b8f;color:#ffffff;">
+                    <img src="${MAIL_BRAND_LOGO_URL}" alt="HOCFAM Logo" style="display:block;width:56px;height:56px;object-fit:contain;background:#ffffff;border-radius:10px;padding:6px;margin-bottom:10px;" />
                     <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">Household Of Covenant And Faith</div>
                     <h2 style="margin:8px 0 0;font-size:22px;line-height:1.3;">We Received Your Message</h2>
                   </td>
