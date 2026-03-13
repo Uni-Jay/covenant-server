@@ -41,7 +41,10 @@ const SMTP_FALLBACK_PORT = parseEnvNumber(process.env.EMAIL_FALLBACK_PORT, 465);
 const SMTP_FALLBACK_SECURE = parseEnvBoolean(process.env.EMAIL_FALLBACK_SECURE, true);
 const SMTP_DEBUG = parseEnvBoolean(process.env.SMTP_DEBUG, false);
 const SMTP_FAILURE_COOLDOWN_MS = parseEnvNumber(process.env.SMTP_FAILURE_COOLDOWN_MS, 60000);
-const SMTP_FROM_ADDRESS = process.env.SMTP_FROM_ADDRESS || process.env.EMAIL_USER || 'noreply@hocfam.org';
+const ORG_INFO_EMAIL = process.env.ORG_EMAIL_INFO || 'info@hocfam.org';
+const SMTP_FROM_ADDRESS = process.env.SMTP_FROM_ADDRESS || ORG_INFO_EMAIL || process.env.EMAIL_USER || 'info@hocfam.org';
+const PASSWORD_RESET_FROM_ADDRESS = process.env.PASSWORD_RESET_FROM_ADDRESS || ORG_INFO_EMAIL || SMTP_FROM_ADDRESS;
+const PASSWORD_RESET_TOKEN_TTL_MINUTES = Math.max(30, parseEnvNumber(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES, 180));
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM || SMTP_FROM_ADDRESS;
 const EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
@@ -49,6 +52,14 @@ const RESEND_ONLY_MODE = EMAIL_MODE === 'resend' || EMAIL_MODE === 'api';
 const SMTP_ONLY_MODE = EMAIL_MODE === 'smtp';
 
 let smtpBackoffUntil = 0;
+
+function formatPasswordResetExpiry(ttlMinutes: number): string {
+  if (ttlMinutes % 60 === 0) {
+    const hours = ttlMinutes / 60;
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  return `${ttlMinutes} minutes`;
+}
 
 // Email configuration
 function createTransporter(port = SMTP_PORT, secure = SMTP_SECURE) {
@@ -183,7 +194,7 @@ async function sendViaResend(mailOptions: nodemailer.SendMailOptions, label: str
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: RESEND_FROM,
+        from: String(mailOptions.from || RESEND_FROM),
         to,
         subject: String(mailOptions.subject || ''),
         html: String(mailOptions.html || ''),
@@ -597,8 +608,9 @@ export const sendPasswordResetEmail = async (
 ): Promise<boolean> => {
   try {
     const resetUrl = `${APP_BASE_URL}/reset-password?token=${resetToken}`;
+    const expiryText = formatPasswordResetExpiry(PASSWORD_RESET_TOKEN_TTL_MINUTES);
     
-    const subject = '🔐 Password Reset Request - Household Of Covenant And Faith Apostolic Ministry';
+    const subject = 'Password Reset Instructions - Household Of Covenant And Faith Apostolic Ministry';
     const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -606,9 +618,9 @@ export const sendPasswordResetEmail = async (
   <style>
     body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #9333ea 0%, #dc2626 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+    .header { background: #0b3b8f; color: white; padding: 28px 30px; text-align: center; border-radius: 10px 10px 0 0; }
     .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-    .button { display: inline-block; background: #9333ea; color: white; padding: 14px 35px; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; }
+    .button { display: inline-block; background: #0b3b8f; color: white; padding: 14px 35px; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; }
     .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }
     .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
   </style>
@@ -616,45 +628,46 @@ export const sendPasswordResetEmail = async (
 <body>
   <div class="container">
     <div class="header">
-      <h1>🔐 Password Reset Request</h1>
+      <h1 style="margin:0;">Password Reset Request</h1>
+      <p style="margin:10px 0 0;font-size:13px;opacity:.9;">Household Of Covenant And Faith Apostolic Ministry</p>
     </div>
     <div class="content">
-      <h2>Hello ${firstName}!</h2>
+      <h2>Hello ${firstName},</h2>
       
-      <p>We received a request to reset your password for your Household Of Covenant And Faith Apostolic Ministry account.</p>
+      <p>We received a request to reset your password for your HOCFAM account.</p>
       
-      <p>Click the button below to reset your password:</p>
+      <p>Use the button below to continue:</p>
       
       <p style="text-align: center;">
         <a href="${resetUrl}" class="button">Reset Password</a>
       </p>
       
-      <p>Or copy and paste this link into your browser:</p>
+      <p>If the button does not open, copy and paste this link into your browser:</p>
       <p style="word-break: break-all; background: #fff; padding: 10px; border-radius: 4px; font-size: 12px;">
         ${resetUrl}
       </p>
       
       <div class="warning">
-        <strong>⚠️ Important:</strong>
+        <strong>Important:</strong>
         <ul style="margin: 10px 0;">
-          <li>This link will expire in <strong>1 hour</strong></li>
-          <li>If you didn't request this, please ignore this email</li>
-          <li>Your password won't change unless you click the link above</li>
+          <li>This link will expire in <strong>${expiryText}</strong>.</li>
+          <li>If you did not request this change, you can safely ignore this email.</li>
+          <li>Your current password remains unchanged until you complete the reset.</li>
         </ul>
       </div>
       
-      <h3>🔒 Security Tips</h3>
+      <h3>Security Tips</h3>
       <ul>
-        <li>Never share your password with anyone</li>
-        <li>Use a strong, unique password</li>
-        <li>Enable two-factor authentication when available</li>
+        <li>Use a strong and unique password.</li>
+        <li>Do not share your password with anyone.</li>
+        <li>Contact support immediately if this request was not made by you.</li>
       </ul>
       
       <p><strong>Need help?</strong><br>
-      Contact us at <a href="mailto:support@hocfam.org">support@hocfam.org</a></p>
+      Contact us at <a href="mailto:info@hocfam.org">info@hocfam.org</a></p>
       
-      <p><strong>God bless you!</strong><br>
-      The Household Of Covenant And Faith Apostolic Ministry Team</p>
+      <p>Regards,<br>
+      Household Of Covenant And Faith Apostolic Ministry</p>
     </div>
     <div class="footer">
       <p>© ${new Date().getFullYear()} Household Of Covenant And Faith Apostolic Ministry. All rights reserved.</p>
@@ -666,7 +679,7 @@ export const sendPasswordResetEmail = async (
     `;
 
     await sendMailWithFallback({
-      from: `"Household Of Covenant And Faith Apostolic Ministry" <${SMTP_FROM_ADDRESS}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${PASSWORD_RESET_FROM_ADDRESS}>`,
       to,
       subject,
       html: htmlContent,
@@ -746,7 +759,7 @@ export const sendPasswordChangedEmail = async (
     `;
 
     await sendMailWithFallback({
-      from: `"Household Of Covenant And Faith Apostolic Ministry" <${SMTP_FROM_ADDRESS}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${PASSWORD_RESET_FROM_ADDRESS}>`,
       to,
       subject,
       html: htmlContent,

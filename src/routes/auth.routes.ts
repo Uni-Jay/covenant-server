@@ -47,6 +47,7 @@ function parseEnvNumber(rawValue: string | undefined, fallback: number): number 
 }
 
 const EMAIL_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
+const PASSWORD_RESET_TOKEN_TTL_MINUTES = Math.max(30, parseEnvNumber(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES, 180));
 
 // Register
 router.post('/register', async (req, res) => {
@@ -575,12 +576,13 @@ router.post('/forgot-password', async (req, res) => {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
     
-    // Token expires in 1 hour
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    // Token expiry is configurable (default 3 hours)
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MINUTES * 60 * 1000);
 
-    // Delete any existing reset tokens for this user
+    // Keep other unexpired reset links valid to avoid invalidating delayed emails.
+    // Only remove previously used or expired records for this user.
     await pool.execute(
-      'DELETE FROM password_resets WHERE user_id = ?',
+      'DELETE FROM password_resets WHERE user_id = ? AND (used = TRUE OR expires_at <= NOW())',
       [user.id]
     );
 
