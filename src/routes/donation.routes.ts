@@ -57,7 +57,7 @@ router.get('/all', authenticate, async (req: any, res) => {
     }
 
     const user = users[0];
-    const isAdmin = user.role === 'admin';
+    const isAdmin = ['admin', 'super_admin', 'pastor', 'elder'].includes(user.role);
     let isMedia = false;
 
     if (user.departments) {

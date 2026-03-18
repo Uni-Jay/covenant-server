@@ -1,7 +1,7 @@
 import express from 'express';
 import mysql from 'mysql2/promise';
 import { authenticate } from '../middleware/auth.middleware';
-import { requirePermission } from '../middleware/permissions.middleware';
+import { requirePermission, hasUnifiedLeadershipAccess } from '../middleware/permissions.middleware';
 import pool from '../config/database';
 import nodemailer from 'nodemailer';
 
@@ -71,7 +71,7 @@ router.post('/send-event-reminder', authenticate, async (req: any, res) => {
   const { eventId, message, subject, sendEmail: shouldSendEmail, sendSMS: shouldSendSMS } = req.body;
   
   // Check if user is admin or media
-  const isAuthorized = req.user.role === 'admin' || req.user.role === 'media' || req.user.role === 'media_head';
+  const isAuthorized = hasUnifiedLeadershipAccess(req.user.role);
   if (!isAuthorized) {
     return res.status(403).json({ message: 'You do not have permission to send notifications' });
   }

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { hasUnifiedLeadershipAccess } from './permissions.middleware';
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -22,7 +23,7 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
 };
 
 export const isAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'super_admin')) {
+  if (req.user && hasUnifiedLeadershipAccess(req.user.role)) {
     next();
   } else {
     res.status(403).json({ message: 'Access denied. Admin only.' });
@@ -40,8 +41,8 @@ export const isAdminOrMedia = (req: AuthRequest, res: Response, next: NextFuncti
   const role = req.user.role?.toLowerCase();
   console.log('👤 [isAdminOrMedia] User role:', role);
   
-  // Allow admin, super_admin, media_head, media
-  if (role === 'admin' || role === 'super_admin' || role === 'media_head' || role === 'media') {
+  // Unified leadership roles all share elevated access.
+  if (hasUnifiedLeadershipAccess(role)) {
     console.log('✅ [isAdminOrMedia] Access granted via role:', role);
     return next();
   }

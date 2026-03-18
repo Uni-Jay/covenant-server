@@ -10,17 +10,37 @@ export interface AuthRequest extends Request {
   };
 }
 
+const roleAliases: Record<string, string> = {
+  head_media: 'media_head',
+  head_admin: 'admin',
+  church_admin: 'admin'
+};
+
+export const normalizeRole = (role?: string): string => {
+  if (!role) return '';
+  const normalized = role.toLowerCase().trim();
+  return roleAliases[normalized] || normalized;
+};
+
+export const hasUnifiedLeadershipAccess = (role?: string): boolean => {
+  const normalized = normalizeRole(role);
+  return ['super_admin', 'admin', 'media_head', 'media'].includes(normalized);
+};
+
 // Role hierarchy (higher roles have all permissions of lower roles)
 export const roleHierarchy = {
   'super_admin': 10,
+  'admin': 10,
+  'head_admin': 10,
+  'media_head': 10,
+  'head_media': 10,
+  'media': 10,
   'pastor': 9,
   'elder': 8,
-  'media_head': 7,
   'department_head': 7,
   'secretary': 6,
   'finance': 5,
   'deacon': 4,
-  'media': 3,
   'choir': 2,
   'member': 1
 };
@@ -103,6 +123,9 @@ export const permissions = {
   // Attendance
   'attendance:view': ['super_admin', 'pastor', 'elder', 'secretary'],
   'attendance:export': ['super_admin', 'pastor', 'secretary'],
+
+  // Dashboard
+  'view_dashboard': ['admin', 'super_admin', 'pastor', 'elder', 'secretary', 'media_head', 'department_head', 'finance', 'deacon', 'media'],
   
   // Audit logs
   'audit:view': ['super_admin', 'pastor', 'media_head']
@@ -161,22 +184,28 @@ export const hasMediaDepartment = async (userId: number): Promise<boolean> => {
 
 // Check if user has a specific permission
 export const hasPermission = (userRole: string, permission: string): boolean => {
+  const normalizedUserRole = normalizeRole(userRole);
   const allowedRoles = permissions[permission as keyof typeof permissions];
   if (!allowedRoles) return false;
+  if (hasUnifiedLeadershipAccess(normalizedUserRole)) return true;
   if (allowedRoles.includes('all')) return true; // Everyone has access
-  return allowedRoles.includes(userRole);
+  return allowedRoles.map((role) => normalizeRole(role)).includes(normalizedUserRole);
 };
 
 // Check if user is executive (can download letterheads)
 export const isExecutive = (userRole: string): boolean => {
+  if (hasUnifiedLeadershipAccess(userRole)) return true;
   const executiveRoles = ['super_admin', 'admin', 'pastor', 'elder', 'secretary', 'media_head', 'media', 'department_head', 'finance', 'deacon'];
-  return executiveRoles.includes(userRole);
+  return executiveRoles.map((role) => normalizeRole(role)).includes(normalizeRole(userRole));
 };
 
 // Check if user's role is equal or higher than required role
 export const hasRoleLevel = (userRole: string, requiredRole: string): boolean => {
-  const userLevel = roleHierarchy[userRole as keyof typeof roleHierarchy] || 0;
-  const requiredLevel = roleHierarchy[requiredRole as keyof typeof roleHierarchy] || 0;
+  if (hasUnifiedLeadershipAccess(userRole)) return true;
+  const normalizedUserRole = normalizeRole(userRole);
+  const normalizedRequiredRole = normalizeRole(requiredRole);
+  const userLevel = roleHierarchy[normalizedUserRole as keyof typeof roleHierarchy] || 0;
+  const requiredLevel = roleHierarchy[normalizedRequiredRole as keyof typeof roleHierarchy] || 0;
   return userLevel >= requiredLevel;
 };
 
@@ -193,7 +222,7 @@ export const requirePermission = (permission: string) => {
       return next();
     }
 
-    if (!hasPermission(req.user.role, permission)) {
+    if (!hasPermission(normalizeRole(req.user.role), permission)) {
       return res.status(403).json({ 
         error: 'Forbidden', 
         message: `You don't have permission to ${permission}` 
@@ -213,8 +242,11 @@ export const requireRole = (requiredRole: string | string[]) => {
 
     const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
     
-    const hasAccess = roles.some(role => 
-      hasRoleLevel(req.user!.role, role) || req.user!.role === role
+    const normalizedUserRole = normalizeRole(req.user!.role);
+    const hasAccess = roles.some(role => {
+      const normalizedRequiredRole = normalizeRole(role);
+      return hasRoleLevel(normalizedUserRole, normalizedRequiredRole) || normalizedUserRole === normalizedRequiredRole;
+    }
     );
 
     if (!hasAccess) {
