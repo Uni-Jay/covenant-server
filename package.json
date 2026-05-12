@@ -4,9 +4,10 @@
   "description": "Backend API for Household Of Covenant And Faith Apostolic Ministry",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "nodemon src/index.ts",
-    "build": "npx tsc",
-    "start": "node dist/index.js",
+  "dev": "nodemon src/index.ts",
+  "build": "tsc",
+  "start": "node dist/index.js",
+  "postinstall": "npm run build",
     "migrate:setup": "node migrate-railway.js",
     "migrate:export": "node export-local-data.js",
     "migrate:import": "node import-to-railway.js",
