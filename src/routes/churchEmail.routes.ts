@@ -14,7 +14,7 @@ interface AuthRequest extends express.Request {
   };
 }
 
-// Get all church emails (media_head and super_admin only)
+// Get all church emails (media_head and admin/media only)
 router.get('/', authenticate, requirePermission('church_email:view'), async (req: AuthRequest, res: Response) => {
   try {
     const [emails] = await pool.execute(`
@@ -42,7 +42,7 @@ router.get('/user/:userId', authenticate, async (req: AuthRequest, res: Response
     const { userId } = req.params;
 
     // Users can view their own church email, or admins can view any
-    if (req.user!.id !== parseInt(userId) && !['super_admin', 'media_head', 'pastor'].includes(req.user!.role)) {
+    if (req.user!.id !== parseInt(userId) && !['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'].includes(req.user!.role)) {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -214,13 +214,13 @@ router.put('/:id/deactivate', authenticate, requirePermission('church_email:dele
   }
 });
 
-// Delete church email (super_admin only)
+// Delete church email (admin or media only)
 router.delete('/:id', authenticate, requirePermission('church_email:delete'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
-    // Only super_admin can permanently delete
-    if (req.user!.role !== 'super_admin') {
+    // Only admin or media can permanently delete
+    if (req.user!.role !== 'super_admin' && req.user!.role !== 'admin' && req.user!.role !== 'media') {
       return res.status(403).json({ error: 'Only super admin can permanently delete church emails' });
     }
 

@@ -11,7 +11,8 @@ export interface AuthRequest extends Request {
 }
 
 const roleAliases: Record<string, string> = {
-  head_media: 'media_head',
+  head_media: 'media',
+  media_head: 'media',
   head_admin: 'admin',
   church_admin: 'admin'
 };
@@ -24,111 +25,119 @@ export const normalizeRole = (role?: string): string => {
 
 export const hasUnifiedLeadershipAccess = (role?: string): boolean => {
   const normalized = normalizeRole(role);
-  return ['super_admin', 'admin', 'media_head', 'media'].includes(normalized);
+  return ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman'].includes(normalized);
 };
 
 // Role hierarchy (higher roles have all permissions of lower roles)
+// Church-wide roles
 export const roleHierarchy = {
-  'super_admin': 10,
-  'admin': 10,
-  'head_admin': 10,
-  'media_head': 10,
-  'head_media': 10,
-  'media': 10,
-  'pastor': 9,
-  'elder': 8,
-  'department_head': 7,
-  'secretary': 6,
-  'finance': 5,
-  'deacon': 4,
-  'choir': 2,
-  'member': 1
+  'super_admin': 12,                // Super administrator (highest level - has all admin & media permissions)
+  'admin': 11,                      // System administrator (highest technical level)
+  'head_admin': 11,                 // Alias
+  'gen_overseer': 10,               // General Overseer (highest church authority)
+  'senior_pastor': 9,               // Senior Pastor
+  'pastor': 8,                      // Pastor
+  'church_committee_chairman': 7,   // Church committee chairman
+  'church_committee_secretary': 6,  // Church committee secretary
+  'treasurer': 5,                   // Treasurer
+  'pro': 4,                         // Public Relation Officer
+  'secretary': 3,                   // Secretary
+  'media': 2,                       // Media officer
+  'coordinator': 1.5,               // Department coordinator
+  'assistant_coordinator': 1.2,     // Assistant coordinator
+  'member': 1                       // Default member (no special access)
 };
 
 // Permission definitions
+// New role structure:
+// - admin: System administrator
+// - gen_overseer, senior_pastor, pastor: Church leadership
+// - church_committee_chairman, church_committee_secretary, secretary, treasurer, pro, media: Church officers
+// - coordinator, assistant_coordinator: Department officers
+// - member: Default (no permissions)
 export const permissions = {
   // User management
-  'user:create': ['super_admin', 'secretary'],
-  'user:read': ['super_admin', 'pastor', 'elder', 'secretary', 'department_head', 'media_head'],
-  'user:update': ['super_admin', 'secretary'],
-  'user:delete': ['super_admin'],
-  'user:approve': ['super_admin', 'pastor', 'secretary'],
+  'user:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
+  'user:read': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman', 'secretary'],
+  'user:update': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
+  'user:delete': ['super_admin', 'admin', 'gen_overseer'],
+  'user:approve': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
   
   // Church email management (executives only)
-  'church_email:create': ['super_admin', 'media_head'],
-  'church_email:reset': ['super_admin', 'media_head'],
-  'church_email:delete': ['super_admin', 'media_head'],
-  'church_email:view': ['super_admin', 'pastor', 'media_head'],
+  'church_email:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'church_email:reset': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'church_email:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'church_email:view': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
   
   // Blog management
-  'blog:create': ['super_admin', 'pastor', 'elder', 'media_head', 'media'],
-  'blog:update': ['super_admin', 'pastor', 'elder', 'media_head', 'media'],
-  'blog:delete': ['super_admin', 'pastor', 'media_head'],
-  'blog:publish': ['super_admin', 'pastor', 'media_head'],
+  'blog:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media', 'pro'],
+  'blog:update': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media', 'pro'],
+  'blog:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'blog:publish': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
   
   // Event management
-  'event:create': ['super_admin', 'pastor', 'elder', 'secretary'],
-  'event:update': ['super_admin', 'pastor', 'elder', 'secretary'],
-  'event:delete': ['super_admin', 'pastor'],
-  'event:attendance': ['super_admin', 'pastor', 'elder', 'secretary'],
+  'event:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'secretary', 'coordinator'],
+  'event:update': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'secretary', 'coordinator'],
+  'event:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
+  'event:attendance': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'secretary', 'coordinator'],
   
   // Financial management
-  'finance:view': ['super_admin', 'pastor', 'finance'],
-  'finance:create': ['super_admin', 'finance'],
-  'finance:update': ['super_admin', 'finance'],
-  'finance:delete': ['super_admin', 'finance'],
-  'finance:report': ['super_admin', 'pastor', 'finance'],
+  'finance:view': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'treasurer'],
+  'finance:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'treasurer'],
+  'finance:update': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'treasurer'],
+  'finance:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'treasurer'],
+  'finance:report': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'treasurer'],
   
-  // Media management (media_head has admin rights, regular media limited)
-  'media:upload': ['super_admin', 'media_head', 'media', 'pastor'],
-  'media:delete': ['super_admin', 'media_head'],
-  'media:livestream': ['super_admin', 'media_head', 'media'],
-  'media:sermon_upload': ['super_admin', 'media_head', 'media', 'pastor'],
-  'media:gallery_upload': ['super_admin', 'media_head', 'media'],
-  'media:event_upload': ['super_admin', 'media_head', 'media'],
+  // Media management
+  'media:upload': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'media:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'media:livestream': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'media:sermon_upload': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'media:gallery_upload': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'media:event_upload': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
   
   // Department management
-  'department:create': ['super_admin', 'pastor', 'department_head'],
-  'department:update': ['super_admin', 'pastor', 'department_head'],
-  'department:view': ['super_admin', 'pastor', 'elder', 'department_head', 'secretary', 'media_head'],
+  'department:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
+  'department:update': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'coordinator'],
+  'department:view': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'secretary', 'coordinator', 'assistant_coordinator'],
   
   // Sermon management
-  'sermon:create': ['super_admin', 'pastor', 'elder'],
-  'sermon:update': ['super_admin', 'pastor', 'elder'],
-  'sermon:delete': ['super_admin', 'pastor'],
+  'sermon:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'sermon:update': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'sermon:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
   
   // Prayer requests
-  'prayer:moderate': ['super_admin', 'pastor', 'elder'],
-  'prayer:delete': ['super_admin', 'pastor'],
+  'prayer:moderate': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
+  'prayer:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
   
   // Counseling
-  'counseling:schedule': ['super_admin', 'pastor', 'elder'],
-  'counseling:view': ['super_admin', 'pastor', 'elder'],
+  'counseling:schedule': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
+  'counseling:view': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
   
-  // Documents & Letterheads (executives only can download)
-  'document:create': ['super_admin', 'secretary'],
-  'document:delete': ['super_admin', 'secretary'],
-  'document:download': ['super_admin', 'pastor', 'elder', 'secretary', 'media_head', 'department_head', 'finance', 'deacon'],
-  'document:view': ['super_admin', 'pastor', 'elder', 'secretary', 'media_head', 'department_head', 'finance', 'deacon'],
+  // Documents & Letterheads
+  'document:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'secretary', 'treasurer'],
+  'document:delete': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor'],
+  'document:download': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman', 'church_committee_secretary', 'secretary', 'treasurer', 'pro', 'media', 'coordinator'],
+  'document:view': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman', 'church_committee_secretary', 'secretary', 'treasurer', 'pro', 'media', 'coordinator', 'assistant_coordinator'],
   
-  // Feed/Posts (all can post, but moderation limited)
-  'feed:moderate': ['super_admin', 'pastor', 'elder', 'media_head'],
-  'feed:pin': ['super_admin', 'pastor', 'media_head'],
+  // Feed/Posts
+  'feed:moderate': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media', 'pro'],
+  'feed:pin': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
   'feed:post': ['all'], // Everyone can post
   
   // Hymns
-  'hymn:create': ['super_admin', 'choir', 'media_head', 'media'],
-  'hymn:setlist': ['super_admin', 'choir'],
+  'hymn:create': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media', 'coordinator'],
+  'hymn:setlist': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'],
   
   // Attendance
-  'attendance:view': ['super_admin', 'pastor', 'elder', 'secretary'],
-  'attendance:export': ['super_admin', 'pastor', 'secretary'],
+  'attendance:view': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'secretary', 'coordinator'],
+  'attendance:export': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'secretary'],
 
   // Dashboard
-  'view_dashboard': ['admin', 'super_admin', 'pastor', 'elder', 'secretary', 'media_head', 'department_head', 'finance', 'deacon', 'media'],
+  'view_dashboard': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman', 'church_committee_secretary', 'secretary', 'treasurer', 'pro', 'media', 'coordinator'],
   
   // Audit logs
-  'audit:view': ['super_admin', 'pastor', 'media_head']
+  'audit:view': ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media']
 };
 
 // Check if user has Media department (super admin access)
@@ -192,10 +201,10 @@ export const hasPermission = (userRole: string, permission: string): boolean => 
   return allowedRoles.map((role) => normalizeRole(role)).includes(normalizedUserRole);
 };
 
-// Check if user is executive (can download letterheads)
+// Check if user is executive (can download letterheads, access admin features)
 export const isExecutive = (userRole: string): boolean => {
   if (hasUnifiedLeadershipAccess(userRole)) return true;
-  const executiveRoles = ['super_admin', 'admin', 'pastor', 'elder', 'secretary', 'media_head', 'media', 'department_head', 'finance', 'deacon'];
+  const executiveRoles = ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman', 'church_committee_secretary', 'secretary', 'treasurer', 'pro', 'media', 'coordinator'];
   return executiveRoles.map((role) => normalizeRole(role)).includes(normalizeRole(userRole));
 };
 
@@ -261,10 +270,10 @@ export const requireRole = (requiredRole: string | string[]) => {
 };
 
 // Middleware for admin-only routes
-export const requireAdmin = requireRole(['super_admin', 'pastor', 'elder']);
+export const requireAdmin = requireRole(['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman']);
 
-// Middleware for super admin only
-export const requireSuperAdmin = requireRole('super_admin');
+// Middleware for super admin only (now super_admin and admin with full system control)
+export const requireSuperAdmin = requireRole(['super_admin', 'admin']);
 
 // Check if user can access department resources
 export const canAccessDepartment = (userDepartments: string[], requiredDepartment: string): boolean => {

@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import pool from '../config/database';
 import { hasUnifiedLeadershipAccess } from './permissions.middleware';
 
 export interface AuthRequest extends Request {
   user?: any;
 }
 
-export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     
@@ -14,7 +15,30 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
       return res.status(401).json({ message: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+    
+    // Check if user is still active (not suspended)
+    try {
+      const [users]: any = await pool.execute(
+        'SELECT id, is_approved FROM users WHERE id = ?',
+        [decoded.id]
+      );
+
+      if (users.length === 0) {
+        return res.status(401).json({ message: 'User not found' });
+      }
+
+      const user = users[0];
+      
+      // Check if user is suspended
+      if (!user.is_approved) {
+        return res.status(403).json({ message: 'Your account has been suspended. Contact an administrator.' });
+      }
+    } catch (dbError) {
+      console.error('Error checking user status:', dbError);
+      // Continue anyway - DB might be temporarily unavailable
+    }
+
     req.user = decoded;
     next();
   } catch (error) {

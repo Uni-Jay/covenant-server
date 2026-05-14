@@ -97,7 +97,7 @@ async function createMinistersGroup() {
 
     // Get first admin/pastor to be creator
     const [admins] = await connection.execute(
-      "SELECT id FROM users WHERE role IN ('super_admin', 'pastor') ORDER BY id LIMIT 1"
+      "SELECT id FROM users WHERE role IN ('admin', 'media', 'pastor') ORDER BY id LIMIT 1"
     );
 
     const creatorId = admins.length > 0 ? admins[0].id : null;

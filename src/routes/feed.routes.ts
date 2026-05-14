@@ -228,7 +228,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     }
 
     // Allow deletion if owner or has moderation permission
-    const canModerate = ['super_admin', 'pastor', 'elder', 'media_head'].includes(userRole);
+    const canModerate = ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media', 'pro', 'coordinator'].includes(userRole);
     if (posts[0].user_id !== userId && !canModerate) {
       return res.status(403).json({ error: 'Unauthorized to delete this post' });
     }
@@ -319,7 +319,7 @@ router.delete('/:postId/comment/:commentId', authenticate, async (req: AuthReque
       return res.status(404).json({ error: 'Comment not found' });
     }
 
-    const canModerate = ['super_admin', 'pastor', 'elder', 'media_head'].includes(userRole);
+    const canModerate = ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media', 'pro', 'coordinator'].includes(userRole);
     if (comments[0].user_id !== userId && !canModerate) {
       return res.status(403).json({ error: 'Unauthorized to delete this comment' });
     }

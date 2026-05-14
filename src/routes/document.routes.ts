@@ -81,7 +81,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Upload document (secretary and super_admin only)
+// Upload document (secretary and admin/media only)
 router.post('/', authenticate, requirePermission('document:create'), upload.single('file'), async (req: AuthRequest, res: Response) => {
   try {
     const { title, description, documentType, requiredRole, isPublic } = req.body;

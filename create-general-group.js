@@ -24,9 +24,9 @@ async function createGeneralGroup() {
       groupId = existing[0].id;
       console.log(`✓ General group already exists (ID: ${groupId})`);
     } else {
-      // Get first admin/super_admin as creator
+      // Get first admin/media as creator
       const [admins] = await connection.execute(
-        "SELECT id FROM users WHERE role IN ('super_admin', 'admin', 'pastor') ORDER BY id LIMIT 1"
+        "SELECT id FROM users WHERE role IN ('admin', 'media', 'pastor') ORDER BY id LIMIT 1"
       );
 
       if (admins.length === 0) {
@@ -77,7 +77,7 @@ async function createGeneralGroup() {
     // Send a welcome message if newly created
     if (existing.length === 0) {
       const [adminsForMsg] = await connection.execute(
-        "SELECT id FROM users WHERE role IN ('super_admin', 'admin', 'pastor') ORDER BY id LIMIT 1"
+        "SELECT id FROM users WHERE role IN ('admin', 'media', 'pastor') ORDER BY id LIMIT 1"
       );
       const senderId = adminsForMsg.length > 0 ? adminsForMsg[0].id : null;
 

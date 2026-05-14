@@ -239,9 +239,9 @@ export async function ensureGeneralGroupAndAddMember(userId: number) {
     if (existingGroups.length > 0) {
       groupId = existingGroups[0].id;
     } else {
-      // Get first admin/super_admin as creator fallback
+      // Get first admin/media as creator fallback
       const [admins]: any = await connection.execute(
-        "SELECT id FROM users WHERE role IN ('super_admin', 'admin', 'pastor') ORDER BY id LIMIT 1",
+        "SELECT id FROM users WHERE role IN ('super_admin', 'admin', 'media', 'pastor') ORDER BY id LIMIT 1",
         []
       );
       const creatorId = admins.length > 0 ? admins[0].id : userId;

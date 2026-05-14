@@ -77,7 +77,7 @@ router.get('/all', authenticate, async (req, res) => {
     const user = (req as any).user;
     
     // Check if user is admin or media
-    const isAdminOrMedia = user.role && ['super_admin', 'admin', 'media_head', 'media'].includes(user.role);
+    const isAdminOrMedia = user.role && ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'].includes(user.role);
     
     if (!isAdminOrMedia) {
       // Check if user belongs to media or prayer team department
@@ -263,7 +263,7 @@ router.patch('/:id', authenticate, async (req, res) => {
     const { status } = req.body;
     
     // Check if user is admin or media
-    const isAdminOrMedia = user.role && ['super_admin', 'admin', 'media_head', 'media'].includes(user.role);
+    const isAdminOrMedia = user.role && ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'].includes(user.role);
     
     if (!isAdminOrMedia) {
       // Check if user belongs to media or prayer team department

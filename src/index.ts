@@ -32,10 +32,12 @@ import dashboardRoutes from './routes/dashboard.routes';
 import attendanceRoutes from './routes/attendance.routes';
 import departmentsRoutes from './routes/departments.routes';
 import usersRoutes from './routes/users.routes';
+import userManagementRoutes from './routes/userManagement.routes';
 import aiRoutes from './routes/ai.routes';
 import contentRoutes from './routes/content.routes';
-
-// Load environment variables
+import calendarRoutes from './routes/calendar.routes';
+import calendarAdminRoutes from './routes/calendarAdmin.routes';
+import { initializeCalendarScheduler, stopCalendarScheduler } from './services/calendarScheduler';
 dotenv.config();
 
 // Ensure uploads directory exists
@@ -109,6 +111,7 @@ app.use('/uploads', (req, res, next) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', userManagementRoutes);
 app.use('/api/sermons', sermonRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/gallery', galleryRoutes);
@@ -131,8 +134,8 @@ app.use('/api/departments', departmentsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/content', contentRoutes);
-
-// Health check
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/calendar/admin', calendarAdminRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
@@ -163,6 +166,9 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   
   // Initialize database tables if needed
   await initializeDatabase();
+  
+  // Initialize calendar scheduler for reminders
+  initializeCalendarScheduler();
   
   // Initialize birthday checker
   initializeBirthdayChecker();

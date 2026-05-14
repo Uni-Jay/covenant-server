@@ -80,7 +80,7 @@ router.get('/leaders', authenticate, async (req: any, res) => {
       WHERE executive_position IS NOT NULL
       AND executive_position != ''
       AND (
-        role IN ('pastor', 'elder', 'deacon') 
+        role IN ('gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman') 
         OR executive_position LIKE '%Pastor%'
         OR executive_position LIKE '%Apostle%'
         OR executive_position LIKE '%Prophet%'
@@ -227,7 +227,7 @@ router.post('/leaders', authenticate, requireMedia, async (req: any, res) => {
       title.toLowerCase().includes('prophet') ||
       title.toLowerCase().includes('evangelist') ||
       updateRole === 'pastor' ||
-      updateRole === 'elder';
+      updateRole === 'church_committee_chairman';
 
     if (isMinister) {
       try {
@@ -465,7 +465,7 @@ router.put('/users/:id/role', authenticate, requireMedia, async (req: any, res) 
     const { id } = req.params;
     const { role } = req.body;
 
-    const validRoles = ['member', 'admin', 'pastor', 'elder', 'deacon', 'secretary', 'media_head', 'media', 'choir'];
+    const validRoles = ['member', 'super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman', 'church_committee_secretary', 'secretary', 'treasurer', 'pro', 'media', 'coordinator', 'assistant_coordinator'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ message: 'Invalid role' });
     }

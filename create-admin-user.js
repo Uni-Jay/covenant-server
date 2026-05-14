@@ -7,7 +7,7 @@ async function createOrUpdateAdmin() {
   const password = process.argv[3];
   const firstName = process.argv[4] || 'Admin';
   const lastName = process.argv[5] || 'HOCFAM';
-  const role = process.argv[6] || 'super_admin';
+  const role = process.argv[6] || 'admin';
 
   if (!email || !password) {
     console.error('Usage: node create-admin-user.js <email> <password> [firstName] [lastName] [role]');

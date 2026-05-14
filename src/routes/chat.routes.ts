@@ -229,7 +229,7 @@ router.post('/groups/:id/messages', authenticate, upload.single('media'), async 
     if (req.file) {
       const userRole = membership[0].user_role;
       const groupRole = membership[0].role;
-      const canUploadMedia = ['super_admin', 'media_head', 'media', 'pastor'].includes(userRole) || groupRole === 'admin';
+      const canUploadMedia = ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'].includes(userRole) || groupRole === 'admin';
       
       if (!canUploadMedia) {
         return res.status(403).json({ error: 'Only media team and group admins can upload media' });
@@ -282,7 +282,7 @@ router.post('/groups', authenticate, async (req: AuthRequest, res: Response) => 
     const userRole = req.user!.role;
 
     // Only certain roles can create groups
-    const canCreateGroup = ['super_admin', 'pastor', 'elder', 'department_head', 'media_head'].includes(userRole);
+    const canCreateGroup = ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'church_committee_chairman', 'media', 'coordinator'].includes(userRole);
     if (!canCreateGroup) {
       return res.status(403).json({ error: 'You do not have permission to create groups' });
     }
@@ -351,7 +351,7 @@ router.post('/groups/:id/members', authenticate, async (req: AuthRequest, res: R
       [id, requesterId]
     ) as any;
 
-    if (membership.length === 0 || membership[0].role !== 'admin') {
+    if (membership.length === 0 || (membership[0].role !== 'super_admin' && membership[0].role !== 'admin')) {
       return res.status(403).json({ error: 'Only group admins can add members' });
     }
 
@@ -390,7 +390,7 @@ router.delete('/groups/:id/members/:userId', authenticate, async (req: AuthReque
     ) as any;
 
     const canRemove = membership.length > 0 && 
-      (membership[0].role === 'admin' || requesterId === parseInt(userId));
+      (membership[0].role === 'super_admin' || membership[0].role === 'admin' || requesterId === parseInt(userId));
 
     if (!canRemove) {
       return res.status(403).json({ error: 'Unauthorized' });
@@ -497,7 +497,7 @@ router.post('/direct/:receiverId', authenticate, upload.single('media'), async (
       ) as any;
 
       const userRole = users[0].role;
-      const canUploadMedia = ['super_admin', 'media_head', 'media', 'pastor'].includes(userRole);
+      const canUploadMedia = ['super_admin', 'admin', 'gen_overseer', 'senior_pastor', 'pastor', 'media'].includes(userRole);
       
       if (!canUploadMedia) {
         return res.status(403).json({ error: 'Only media team can upload media in direct messages' });
@@ -828,7 +828,7 @@ router.delete('/groups/:id/members/:userId', authenticate, async (req: AuthReque
       [groupId, userIdToRemove]
     ) as any;
 
-    if (targetMembership.length > 0 && targetMembership[0].role === 'admin') {
+    if (targetMembership.length > 0 && (targetMembership[0].role === 'super_admin' || targetMembership[0].role === 'admin')) {
       return res.status(403).json({ error: 'Cannot remove admin from group' });
     }
 
@@ -909,7 +909,7 @@ router.post('/groups/:id/leave', authenticate, async (req: AuthRequest, res: Res
       [groupId, userId]
     ) as any;
 
-    if (userRole.length > 0 && userRole[0].role === 'admin' && admins[0].adminCount === 1) {
+    if (userRole.length > 0 && (userRole[0].role === 'super_admin' || userRole[0].role === 'admin') && admins[0].adminCount === 1) {
       return res.status(400).json({ error: 'Cannot leave group as the last admin. Please assign another admin first.' });
     }
 
