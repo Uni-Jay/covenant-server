@@ -68,7 +68,7 @@ function createTransporter(port = SMTP_PORT, secure = SMTP_SECURE) {
   }
 
   return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.zoho.com',
+    host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
     port,
     secure,
     connectionTimeout: SMTP_TIMEOUT_MS,

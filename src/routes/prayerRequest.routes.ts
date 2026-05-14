@@ -16,7 +16,7 @@ const PRAYER_RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_ADMIN_US
 const MAIL_BRAND_LOGO_URL = process.env.MAIL_BRAND_LOGO_URL || 'https://hocfam.org/image/New_Logo.png';
 
 const prayerTransporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.zoho.com',
+  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
   port: parseInt(process.env.EMAIL_PORT || '587'),
   secure: (process.env.EMAIL_SECURE || 'false') === 'true',
   connectionTimeout: PRAYER_SMTP_TIMEOUT_MS,

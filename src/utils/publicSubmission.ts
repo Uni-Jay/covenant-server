@@ -36,7 +36,7 @@ const SMTP_PORT = parseEnvNumber(process.env.EMAIL_PORT, 587);
 const SMTP_SECURE = parseEnvBoolean(process.env.EMAIL_SECURE, false);
 
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.zoho.com',
+  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
   port: SMTP_PORT,
   secure: SMTP_SECURE,
   auth: {

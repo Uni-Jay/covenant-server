@@ -9,7 +9,7 @@ const router = express.Router();
 
 // Email transporter configuration (provider-agnostic SMTP)
 const emailTransporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.zoho.com',
+  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
   port: parseInt(process.env.EMAIL_PORT || '587'),
   secure: (process.env.EMAIL_SECURE || 'false') === 'true',
   auth: {
