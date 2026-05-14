@@ -1,22 +1,30 @@
 import { Router } from 'express';
 import pool from '../config/database';
 import { authenticate } from '../middleware/auth.middleware';
-import { hasMediaDepartment } from '../middleware/permissions.middleware';
+import { hasMediaDepartment, hasUnifiedLeadershipAccess } from '../middleware/permissions.middleware';
 import { syncUserDepartmentGroups, addUserToExecutiveGroup, removeUserFromExecutiveGroup } from '../services/chat.service';
 
 const router = Router();
 
-// Middleware to check if user has Media department
+// Middleware to check if user has Media department or admin/leadership access
 const requireMedia = async (req: any, res: any, next: any) => {
   try {
-    console.log('🔐 Checking Media department for user:', req.user.id);
+    console.log('🔐 Checking Media department or leadership access for user:', req.user.id);
+    
+    // Check if user has leadership/admin access via role
+    if (hasUnifiedLeadershipAccess(req.user.role)) {
+      console.log('✅ Access granted via leadership role:', req.user.role);
+      return next();
+    }
+    
+    // Otherwise check Media department
     const isMedia = await hasMediaDepartment(req.user.id);
     console.log('✅ Has Media department:', isMedia);
     if (!isMedia) {
-      console.log('❌ Access denied - not in Media department');
+      console.log('❌ Access denied - not in Media department and no leadership role');
       return res.status(403).json({ 
         error: 'Forbidden', 
-        message: 'Only Media department members can assign roles' 
+        message: 'Only Media department members or admins can access this resource' 
       });
     }
     console.log('✅ Access granted - user has Media department');

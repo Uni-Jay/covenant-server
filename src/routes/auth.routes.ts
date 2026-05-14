@@ -361,6 +361,75 @@ router.get('/me', authenticate, async (req: any, res) => {
   }
 });
 
+// Get user profile
+router.get('/profile', authenticate, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [users] = await pool.execute(
+      `SELECT 
+        id, 
+        email, 
+        first_name as firstName, 
+        last_name as lastName, 
+        phone, 
+        address, 
+        gender, 
+        role, 
+        department, 
+        departments,
+        photo,
+        date_of_birth as dateOfBirth,
+        is_approved as isApproved,
+        is_active as isActive,
+        created_at as createdAt
+      FROM users WHERE id = ?`,
+      [userId]
+    ) as any;
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const user = users[0];
+    
+    // Parse departments if it's a JSON string
+    let userDepartments = [];
+    if (user.departments) {
+      try {
+        userDepartments = typeof user.departments === 'string' 
+          ? JSON.parse(user.departments) 
+          : Array.isArray(user.departments) 
+          ? user.departments 
+          : [user.departments];
+      } catch (e) {
+        userDepartments = [];
+      }
+    }
+
+    res.json({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      address: user.address,
+      gender: user.gender,
+      role: user.role,
+      department: user.department,
+      departments: userDepartments,
+      photo: user.photo || null,
+      dateOfBirth: user.dateOfBirth,
+      isApproved: user.isApproved,
+      isActive: user.isActive,
+      createdAt: user.createdAt
+    });
+  } catch (error: any) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ message: 'Failed to fetch profile', error: error.message });
+  }
+});
+
 // Update profile
 router.put('/profile', authenticate, async (req: any, res) => {
   try {

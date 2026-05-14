@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "1ec8b904-390a-4afd-94a9-bde2db331143"
+      }
+    },
+    "android": {
+      "package": "com.tunmise_jay.covenantserver"
+    }
+  }
+}
