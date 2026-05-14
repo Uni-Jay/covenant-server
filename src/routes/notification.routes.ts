@@ -499,4 +499,179 @@ router.delete('/inbox/:id', authenticate, async (req: any, res) => {
   }
 });
 
+// Send generic notification (not tied to specific event) - NEW ENDPOINT
+router.post('/send-generic', authenticate, async (req: any, res) => {
+  const { title, message, sendTo = 'all', sendEmail = true, sendSMS = true, dates = [] } = req.body;
+  
+  // Check if user is admin or media
+  const isAuthorized = hasUnifiedLeadershipAccess(req.user.role);
+  if (!isAuthorized) {
+    return res.status(403).json({ message: 'You do not have permission to send notifications' });
+  }
+
+  if (!title || !message) {
+    return res.status(400).json({ message: 'Title and message are required' });
+  }
+
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    let users: any[] = [];
+    let query = `
+      SELECT id, email, phone_number, CONCAT(first_name, ' ', last_name) as name 
+      FROM users 
+      WHERE is_approved = TRUE
+    `;
+
+    // Filter by sendTo parameter
+    if (sendTo === 'firstTimers') {
+      const [firstTimersResult] = await connection.execute(
+        `SELECT id, email, phone, CONCAT(first_name, ' ', last_name) as name 
+         FROM first_timers 
+         WHERE is_converted_to_member = FALSE`
+      ) as any;
+      users = firstTimersResult;
+    } else if (sendTo && sendTo !== 'all') {
+      // Send to specific department
+      query += ` AND departments LIKE ?`;
+      const [usersResult] = await connection.execute(query, [`%${sendTo}%`]) as any;
+      users = usersResult;
+    } else {
+      // Send to all members
+      const [usersResult] = await connection.execute(query) as any;
+      users = usersResult;
+    }
+
+    let emailsSent = 0;
+    let smsSent = 0;
+
+    // Send notifications for each date (or just once if no dates)
+    const datetosend = dates && dates.length > 0 ? dates : [''];
+
+    for (const dateItem of datetosend) {
+      const finalMessage = dateItem 
+        ? message.replace(/\[DATE\]/g, dateItem) 
+        : message;
+
+      for (const user of users) {
+        // Queue email
+        if (sendEmail && user.email) {
+          try {
+            await sendEmail(
+              user.email,
+              title,
+              `<h2>${title}</h2><p>${finalMessage}</p>`
+            );
+            emailsSent++;
+            
+            // Log to notification queue
+            await connection.execute(
+              `INSERT INTO notification_queue (user_id, title, message, type, status, created_at)
+               VALUES (?, ?, ?, 'email', 'sent', NOW())`,
+              [user.id || 0, title, finalMessage]
+            );
+          } catch (error) {
+            console.error('Error sending email:', error);
+          }
+        }
+
+        // Queue SMS (Nigeria phone numbers only)
+        if (sendSMS && user.phone_number) {
+          const phone = user.phone_number || user.phone;
+          if (phone && (phone.startsWith('+234') || phone.startsWith('234') || phone.startsWith('0'))) {
+            try {
+              await sendSMS(
+                phone.replace(/^0/, '+234').replace(/^234/, '+234'),
+                finalMessage
+              );
+              smsSent++;
+
+              // Log to notification queue
+              await connection.execute(
+                `INSERT INTO notification_queue (user_id, title, message, type, status, created_at)
+                 VALUES (?, ?, ?, 'sms', 'sent', NOW())`,
+                [user.id || 0, title, finalMessage]
+              );
+            } catch (error) {
+              console.error('Error sending SMS:', error);
+            }
+          }
+        }
+      }
+    }
+
+    await connection.commit();
+
+    res.json({
+      message: 'Notifications sent successfully',
+      emailsSent,
+      smsSent,
+      datesCount: datetosend.length,
+      recipientCount: users.length
+    });
+  } catch (error: any) {
+    await connection.rollback();
+    console.error('Send generic notification error:', error);
+    res.status(500).json({ message: 'Failed to send notification', error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// Send test notification to current user
+router.post('/send-test', authenticate, async (req: any, res) => {
+  const { title, message } = req.body;
+
+  if (!title || !message) {
+    return res.status(400).json({ message: 'Title and message are required' });
+  }
+
+  try {
+    const [users] = await pool.execute(
+      'SELECT email, phone_number FROM users WHERE id = ?',
+      [req.user.id]
+    ) as any;
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const user = users[0];
+    let sent = { email: false, sms: false };
+
+    // Send test email
+    if (user.email) {
+      await sendEmail(user.email, `[TEST] ${title}`, `
+        <h2>[TEST] ${title}</h2>
+        <p><strong>This is a test notification</strong></p>
+        <p>${message}</p>
+        <p style="color: #999; font-size: 12px; margin-top: 20px;">Sent at ${new Date().toLocaleString()}</p>
+      `);
+      sent.email = true;
+    }
+
+    // Send test SMS
+    if (user.phone_number) {
+      const phone = user.phone_number;
+      if (phone && (phone.startsWith('+234') || phone.startsWith('234') || phone.startsWith('0'))) {
+        await sendSMS(
+          phone.replace(/^0/, '+234').replace(/^234/, '+234'),
+          `[TEST] ${title}: ${message}`
+        );
+        sent.sms = true;
+      }
+    }
+
+    res.json({
+      message: 'Test notification sent',
+      sent
+    });
+  } catch (error: any) {
+    console.error('Send test notification error:', error);
+    res.status(500).json({ message: 'Failed to send test notification', error: error.message });
+  }
+});
+
 export default router;

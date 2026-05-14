@@ -14,7 +14,8 @@ const roleAliases: Record<string, string> = {
   head_media: 'media',
   media_head: 'media',
   head_admin: 'admin',
-  church_admin: 'admin'
+  church_admin: 'admin',
+  super_admin: 'admin'
 };
 
 export const normalizeRole = (role?: string): string => {
