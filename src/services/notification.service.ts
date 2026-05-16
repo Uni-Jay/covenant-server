@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import pool from '../config/database';
+import * as brevo from '@getbrevo/brevo';
 
 const APP_BASE_URL = (process.env.APP_URL || 'https://hocfam.org').replace(/\/$/, '');
 
@@ -218,6 +219,44 @@ async function sendViaResend(mailOptions: nodemailer.SendMailOptions, label: str
   }
 }
 
+async function sendViaBrevoAPI(mailOptions: nodemailer.SendMailOptions, label: string): Promise<boolean> {
+  if (!RESEND_API_KEY) {
+    console.warn(`${label} via Brevo API skipped - no API key configured`);
+    return false;
+  }
+
+  try {
+    const apiInstance = new brevo.TransactionalEmailsApi();
+    apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, RESEND_API_KEY);
+
+    const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
+    const to = toList.filter(Boolean).map((item) => ({
+      email: String(item),
+    }));
+
+    if (!to.length) {
+      return false;
+    }
+
+    const sendSmtpEmail = new brevo.SendSmtpEmail();
+    sendSmtpEmail.subject = String(mailOptions.subject || '');
+    sendSmtpEmail.htmlContent = String(mailOptions.html || '');
+    sendSmtpEmail.sender = {
+      email: String(mailOptions.from || SMTP_FROM_ADDRESS),
+      name: 'Household Of Covenant And Faith Apostolic Ministry',
+    };
+    sendSmtpEmail.to = to;
+
+    await apiInstance.sendTransacEmail(sendSmtpEmail);
+    
+    console.log(`✓ ${label} sent via Brevo API`);
+    return true;
+  } catch (error) {
+    console.error(`${label} failed via Brevo API`, error);
+    return false;
+  }
+}
+
 async function sendMailWithFallback(mailOptions: nodemailer.SendMailOptions, label: string): Promise<boolean> {
   if (RESEND_ONLY_MODE) {
     if (!RESEND_API_KEY) {
@@ -229,7 +268,12 @@ async function sendMailWithFallback(mailOptions: nodemailer.SendMailOptions, lab
 
   if (isSmtpBackoffActive()) {
     if (!SMTP_ONLY_MODE && RESEND_API_KEY) {
-      return sendViaResend(mailOptions, `${label} (SMTP backoff)`);
+      // Try Brevo API first (native Brevo), then Resend fallback
+      const BrevoResult = await sendViaBrevoAPI(mailOptions, `${label} (Brevo API via SMTP backoff)`);
+      if (BrevoResult) return true;
+      
+      // Fallback to Resend if Brevo API fails
+      return sendViaResend(mailOptions, `${label} (Resend fallback via SMTP backoff)`);
     }
 
     throw {
@@ -280,7 +324,11 @@ async function sendMailWithFallback(mailOptions: nodemailer.SendMailOptions, lab
   }
 
   if (!SMTP_ONLY_MODE && RESEND_API_KEY) {
-    return sendViaResend(mailOptions, label);
+    // Try Brevo API first (native), then Resend as final fallback
+    const brevoResult = await sendViaBrevoAPI(mailOptions, `${label} (Brevo API final fallback)`);
+    if (brevoResult) return true;
+    
+    return sendViaResend(mailOptions, `${label} (Resend final fallback)`);
   }
 
   if (lastError) {

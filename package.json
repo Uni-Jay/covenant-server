@@ -21,6 +21,7 @@
     "npm": ">=9.0.0"
   },
   "dependencies": {
+    "@getbrevo/brevo": "^5.0.4",
     "@google/generative-ai": "^0.24.1",
     "@types/bcrypt": "^6.0.0",
     "@types/nodemailer": "^7.0.5",
