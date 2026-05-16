@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import pool from '../config/database';
-import * as brevo from '@getbrevo/brevo';
+import axios from 'axios';
 
 const APP_BASE_URL = (process.env.APP_URL || 'https://hocfam.org').replace(/\/$/, '');
 
@@ -226,9 +226,6 @@ async function sendViaBrevoAPI(mailOptions: nodemailer.SendMailOptions, label: s
   }
 
   try {
-    const apiInstance = new brevo.TransactionalEmailsApi();
-    apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, RESEND_API_KEY);
-
     const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
     const to = toList.filter(Boolean).map((item) => ({
       email: String(item),
@@ -238,21 +235,31 @@ async function sendViaBrevoAPI(mailOptions: nodemailer.SendMailOptions, label: s
       return false;
     }
 
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    sendSmtpEmail.subject = String(mailOptions.subject || '');
-    sendSmtpEmail.htmlContent = String(mailOptions.html || '');
-    sendSmtpEmail.sender = {
-      email: String(mailOptions.from || SMTP_FROM_ADDRESS),
-      name: 'Household Of Covenant And Faith Apostolic Ministry',
-    };
-    sendSmtpEmail.to = to;
+    // Brevo REST API v3 endpoint for transactional emails
+    const response = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      {
+        subject: String(mailOptions.subject || ''),
+        htmlContent: String(mailOptions.html || ''),
+        sender: {
+          email: String(mailOptions.from || SMTP_FROM_ADDRESS),
+          name: 'Household Of Covenant And Faith Apostolic Ministry',
+        },
+        to: to,
+      },
+      {
+        headers: {
+          'api-key': RESEND_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        timeout: 5000,
+      }
+    );
 
-    await apiInstance.sendTransacEmail(sendSmtpEmail);
-    
-    console.log(`✓ ${label} sent via Brevo API`);
+    console.log(`✓ ${label} sent via Brevo API, messageId: ${response.data.messageId}`);
     return true;
   } catch (error) {
-    console.error(`${label} failed via Brevo API`, error);
+    console.error(`${label} failed via Brevo API:`, error instanceof Error ? error.message : error);
     return false;
   }
 }
