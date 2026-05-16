@@ -11,7 +11,19 @@ const PRAYER_BLOCKING_WAIT_MS = parseInt((process.env.SMTP_BLOCKING_WAIT_MS || '
 const PRAYER_EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
 const PRAYER_RESEND_ONLY_MODE = PRAYER_EMAIL_MODE === 'resend' || PRAYER_EMAIL_MODE === 'api';
 const PRAYER_SMTP_ONLY_MODE = PRAYER_EMAIL_MODE === 'smtp';
-const PRAYER_RESEND_API_KEY = process.env.RESEND_API_KEY;
+function looksLikeResendApiKey(rawValue: string | undefined): boolean {
+  return !!rawValue && /^re_[a-zA-Z0-9]/.test(rawValue.trim());
+}
+
+function extractEmailAddress(rawValue: string): string {
+  const match = rawValue.match(/<([^>]+)>/);
+  return (match?.[1] || rawValue).trim();
+}
+
+const rawPrayerBrevoApiKey = process.env.BREVO_API_KEY?.trim();
+const rawPrayerResendApiKey = process.env.RESEND_API_KEY?.trim();
+const PRAYER_RESEND_API_KEY = looksLikeResendApiKey(rawPrayerResendApiKey) ? rawPrayerResendApiKey : undefined;
+const PRAYER_BREVO_API_KEY = rawPrayerBrevoApiKey || (!PRAYER_RESEND_API_KEY ? rawPrayerResendApiKey : undefined);
 const PRAYER_RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_ADMIN_USER || process.env.EMAIL_USER || 'admin@hocfam.org';
 const MAIL_BRAND_LOGO_URL = process.env.MAIL_BRAND_LOGO_URL || 'https://hocfam.org/image/New_Logo.png';
 
@@ -67,6 +79,60 @@ async function sendPrayerViaResend(mailOptions: nodemailer.SendMailOptions): Pro
     return true;
   } catch (error) {
     console.error('Prayer request email dispatch failed via Resend:', error instanceof Error ? error.message : String(error));
+    return false;
+  }
+}
+
+async function sendPrayerViaBrevo(mailOptions: nodemailer.SendMailOptions): Promise<boolean> {
+  if (!PRAYER_BREVO_API_KEY) {
+    return false;
+  }
+
+  const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
+  const to = toList.filter(Boolean).map((item) => ({
+    email: String(item),
+  }));
+
+  if (!to.length) {
+    return false;
+  }
+
+  const senderEmail = extractEmailAddress(String(mailOptions.from || PRAYER_RESEND_FROM));
+  if (!senderEmail) {
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': PRAYER_BREVO_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        subject: String(mailOptions.subject || ''),
+        htmlContent: String(mailOptions.html || ''),
+        sender: {
+          email: senderEmail,
+          name: 'Household Of Covenant And Faith Apostolic Ministry',
+        },
+        to,
+        replyTo: mailOptions.replyTo ? { email: String(mailOptions.replyTo) } : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Prayer request email dispatch failed via Brevo API:', {
+        status: response.status,
+        body: errorText,
+      });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Prayer request email dispatch failed via Brevo API:', error instanceof Error ? error.message : String(error));
     return false;
   }
 }
@@ -202,7 +268,13 @@ router.post('/', async (req, res) => {
           `;
 
       if (PRAYER_RESEND_ONLY_MODE && !PRAYER_SMTP_ONLY_MODE) {
-        const emailDelivered = await sendPrayerViaResend({
+        const emailDelivered = await sendPrayerViaBrevo({
+          from: `"${senderDisplay}" <${PRAYER_RESEND_FROM}>`,
+          to: prayerAdminRecipient,
+          replyTo: isAnonymous ? undefined : email,
+          subject: prayerSubject,
+          html: prayerHtml,
+        }) || await sendPrayerViaResend({
           from: `"${senderDisplay}" <${PRAYER_RESEND_FROM}>`,
           to: prayerAdminRecipient,
           replyTo: isAnonymous ? undefined : email,
@@ -239,6 +311,22 @@ router.post('/', async (req, res) => {
         console.error('Prayer request email dispatch failed:', mailError instanceof Error ? mailError.message : String(mailError));
         emailDelivered = false;
         void mailPromise.catch(() => undefined);
+      }
+
+      if (!emailDelivered && !PRAYER_SMTP_ONLY_MODE) {
+        emailDelivered = await sendPrayerViaBrevo({
+          from: `"${senderDisplay}" <${PRAYER_RESEND_FROM}>`,
+          to: prayerAdminRecipient,
+          replyTo: isAnonymous ? undefined : email,
+          subject: prayerSubject,
+          html: prayerHtml,
+        }) || await sendPrayerViaResend({
+          from: `"${senderDisplay}" <${PRAYER_RESEND_FROM}>`,
+          to: prayerAdminRecipient,
+          replyTo: isAnonymous ? undefined : email,
+          subject: prayerSubject,
+          html: prayerHtml,
+        });
       }
 
       return res.status(emailDelivered ? 201 : 202).json({
