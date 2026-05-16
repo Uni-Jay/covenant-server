@@ -81,7 +81,8 @@ router.get('/users', authenticate, async (req, res) => {
  */
 router.post('/users/:userId/assign-role', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: userIdParam } = req.params;
+    const userId = parseInt(userIdParam, 10);
     const { role } = req.body;
     const adminUser = (req as any).user;
 
@@ -126,7 +127,8 @@ router.post('/users/:userId/assign-role', authenticate, async (req, res) => {
  */
 router.post('/users/:userId/remove-role', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: userIdParam } = req.params;
+    const userId = parseInt(userIdParam, 10);
     const adminUser = (req as any).user;
 
     // Check if requester is admin or media
@@ -165,7 +167,8 @@ router.post('/users/:userId/remove-role', authenticate, async (req, res) => {
  */
 router.post('/users/:userId/assign-department', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: userIdParam } = req.params;
+    const userId = parseInt(userIdParam, 10);
     const { department } = req.body;
     const adminUser = (req as any).user;
 
@@ -233,7 +236,8 @@ router.post('/users/:userId/assign-department', authenticate, async (req, res) =
  */
 router.post('/users/:userId/remove-department', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: userIdParam } = req.params;
+    const userId = parseInt(userIdParam, 10);
     const { department } = req.body;
     const adminUser = (req as any).user;
 
@@ -299,7 +303,8 @@ router.post('/users/:userId/remove-department', authenticate, async (req, res) =
  */
 router.post('/users/:userId/suspend', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: userIdParam } = req.params;
+    const userId = parseInt(userIdParam, 10);
     const { reason } = req.body;
     const adminUser = (req as any).user;
 
@@ -339,7 +344,8 @@ router.post('/users/:userId/suspend', authenticate, async (req, res) => {
  */
 router.post('/users/:userId/restore', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: userIdParam } = req.params;
+    const userId = parseInt(userIdParam, 10);
     const adminUser = (req as any).user;
 
     // Check if requester is admin or media

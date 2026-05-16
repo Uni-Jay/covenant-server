@@ -92,15 +92,37 @@ router.post('/', authenticate, isAdminOrMedia, upload.fields([
 });
 
 // Update sermon
-router.put('/:id', authenticate, isAdminOrMedia, async (req, res) => {
+router.put('/:id', authenticate, isAdminOrMedia, upload.fields([
+  { name: 'video', maxCount: 1 },
+  { name: 'audio', maxCount: 1 },
+  { name: 'pdf', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), async (req: any, res) => {
   try {
     const { title, description, preacher, date, category } = req.body;
+    const files = req.files;
+    
+    // Get current sermon data to preserve existing URLs
+    const [sermons]: any = await pool.execute('SELECT * FROM sermons WHERE id = ?', [req.params.id]);
+    if (sermons.length === 0) {
+      return res.status(404).json({ message: 'Sermon not found' });
+    }
+    
+    const current = sermons[0];
+    
+    // Use new files if provided, otherwise keep existing URLs
+    const videoUrl = files?.video ? `/uploads/sermons/${files.video[0].filename}` : current.video_url;
+    const audioUrl = files?.audio ? `/uploads/sermons/${files.audio[0].filename}` : current.audio_url;
+    const pdfUrl = files?.pdf ? `/uploads/sermons/${files.pdf[0].filename}` : current.pdf_url;
+    const thumbnailUrl = files?.thumbnail ? `/uploads/sermons/${files.thumbnail[0].filename}` : current.thumbnail_url;
+    
     await pool.execute(
-      'UPDATE sermons SET title = ?, description = ?, preacher = ?, date = ?, category = ? WHERE id = ?',
-      [title, description, preacher, date, category, req.params.id]
+      'UPDATE sermons SET title = ?, description = ?, preacher = ?, date = ?, category = ?, video_url = ?, audio_url = ?, pdf_url = ?, thumbnail_url = ? WHERE id = ?',
+      [title, description, preacher, date, category, videoUrl, audioUrl, pdfUrl, thumbnailUrl, req.params.id]
     );
     res.json({ message: 'Sermon updated' });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Failed to update sermon' });
   }
 });

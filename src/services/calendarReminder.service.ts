@@ -1,5 +1,5 @@
 import pool from '../config/database';
-import { sendEmail } from './notification.service';
+import { sendEmailNotification } from './notification.service';
 import { sendWhatsAppMessage } from './whatsapp.service';
 import nodemailer from 'nodemailer';
 
@@ -24,6 +24,7 @@ interface User {
   phoneNumber: string;
   firstName: string;
   lastName: string;
+  date_of_birth: string;
 }
 
 // Send daily reminders for events within the next 3 months
