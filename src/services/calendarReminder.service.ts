@@ -112,7 +112,7 @@ const sendEventReminder = async (event: CalendarEvent) => {
             <p>Blessings,<br/>The Church Team</p>
           `;
           
-          await sendEmail(user.email, emailSubject, emailBody);
+          await sendEmailNotification(user.id, user.email, emailSubject, emailBody);
         }
 
         // WhatsApp reminder
@@ -233,7 +233,7 @@ const sendBirthdayMessageToUser = async (user: User) => {
         <p>With love and prayers,<br/>The Church Family</p>
       `;
       
-      await sendEmail(user.email, emailSubject, emailBody);
+      await sendEmailNotification(user.id, user.email, emailSubject, emailBody);
     }
 
     // WhatsApp birthday greeting
@@ -291,7 +291,7 @@ const sendGroupBirthdayGreetings = async (birthday: User, members: User[], age: 
             <p>Blessings,<br/>The Church Team</p>
           `;
           
-          await sendEmail(greeter.email, emailSubject, emailBody);
+          await sendEmailNotification(greeter.id, greeter.email, emailSubject, emailBody);
         }
       } catch (error) {
         console.error(`⚠️  Error notifying ${greeter.firstName}:`, error);
