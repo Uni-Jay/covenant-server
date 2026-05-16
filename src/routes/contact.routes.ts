@@ -53,7 +53,14 @@ const SMTP_USE_ORG_FROM = parseEnvBoolean(process.env.SMTP_USE_ORG_FROM, false);
 const SMTP_FROM_ADDRESS = process.env.SMTP_FROM_ADDRESS || '';
 const SMTP_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
 const SMTP_FAILURE_COOLDOWN_MS = parseEnvNumber(process.env.SMTP_FAILURE_COOLDOWN_MS, 60000);
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+function looksLikeResendApiKey(rawValue: string | undefined): boolean {
+  return !!rawValue && /^re_[a-zA-Z0-9]/.test(rawValue.trim());
+}
+
+const rawBrevoApiKey = process.env.BREVO_API_KEY?.trim();
+const rawResendApiKey = process.env.RESEND_API_KEY?.trim();
+const RESEND_API_KEY = looksLikeResendApiKey(rawResendApiKey) ? rawResendApiKey : undefined;
+const BREVO_API_KEY = rawBrevoApiKey || (!RESEND_API_KEY ? rawResendApiKey : undefined);
 const RESEND_FROM = process.env.RESEND_FROM || process.env.EMAIL_USER || 'admin@hocfam.org';
 const MAIL_BRAND_LOGO_URL = process.env.MAIL_BRAND_LOGO_URL || 'https://hocfam.org/image/New_Logo.png';
 const EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
@@ -272,6 +279,63 @@ async function sendViaResend(mailOptions: nodemailer.SendMailOptions, label: str
   }
 }
 
+async function sendViaBrevoAPI(mailOptions: nodemailer.SendMailOptions, label: string): Promise<boolean> {
+  if (!BREVO_API_KEY) {
+    return false;
+  }
+
+  const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
+  const to = toList.filter(Boolean).map((item) => ({
+    email: String(item),
+  }));
+
+  if (!to.length) {
+    return false;
+  }
+
+  const senderValue = String(mailOptions.from || SMTP_FROM_ADDRESS || RESEND_FROM || '');
+  const senderMatch = senderValue.match(/<([^>]+)>/);
+  const senderEmail = (senderMatch?.[1] || senderValue).trim();
+
+  if (!senderEmail) {
+    return false;
+  }
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        subject: String(mailOptions.subject || ''),
+        htmlContent: String(mailOptions.html || ''),
+        sender: {
+          email: senderEmail,
+          name: 'Household Of Covenant And Faith Apostolic Ministry',
+        },
+        to,
+        replyTo: mailOptions.replyTo ? { email: String(mailOptions.replyTo) } : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`${label} failed via Brevo API`, {
+        status: response.status,
+        body: errorText,
+      });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`${label} failed via Brevo API`, normalizeSmtpError(error));
+    return false;
+  }
+}
+
 async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
@@ -330,11 +394,12 @@ async function sendMailWithFallback(
   }
 
   if (isSmtpBackoffActive()) {
-    if (!SMTP_ONLY_MODE && RESEND_API_KEY) {
-      const resendSent = await sendViaResend(mailOptions, `${label} (SMTP backoff)`);
-      if (resendSent) {
-        return;
-      }
+    if (!SMTP_ONLY_MODE) {
+      const brevoSent = await sendViaBrevoAPI(mailOptions, `${label} (Brevo API via SMTP backoff)`);
+      if (brevoSent) return;
+
+      const resendSent = await sendViaResend(mailOptions, `${label} (Resend fallback via SMTP backoff)`);
+      if (resendSent) return;
     }
 
     throw {
@@ -441,11 +506,12 @@ async function sendMailWithFallback(
     }
   }
 
-  if (!SMTP_ONLY_MODE && RESEND_API_KEY) {
-    const resendSent = await sendViaResend(mailOptions, label);
-    if (resendSent) {
-      return;
-    }
+  if (!SMTP_ONLY_MODE) {
+    const brevoSent = await sendViaBrevoAPI(mailOptions, `${label} (Brevo API final fallback)`);
+    if (brevoSent) return;
+
+    const resendSent = await sendViaResend(mailOptions, `${label} (Resend final fallback)`);
+    if (resendSent) return;
   }
 
   throw lastError || new Error(`${label} could not be sent because no valid SMTP transporter is available`);
@@ -544,7 +610,7 @@ router.post('/', async (req, res) => {
       void adminMailPromise.catch(() => undefined);
     }
 
-    const shouldSendConfirmation = adminEmailDelivered || !!RESEND_API_KEY || !isTransientSmtpError(adminSmtpError || { message: '' });
+    const shouldSendConfirmation = adminEmailDelivered || !!BREVO_API_KEY || !!RESEND_API_KEY || !isTransientSmtpError(adminSmtpError || { message: '' });
     if (shouldSendConfirmation) {
       // Confirmation email is best-effort and should not delay API response.
       void sendMailWithFallback(resolvedCategory, {
