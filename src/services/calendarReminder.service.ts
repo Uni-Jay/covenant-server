@@ -1,7 +1,6 @@
 import pool from '../config/database';
 import { sendEmailNotification } from './notification.service';
 import { sendWhatsAppMessage } from './whatsapp.service';
-import nodemailer from 'nodemailer';
 
 /**
  * Calendar Reminder Service

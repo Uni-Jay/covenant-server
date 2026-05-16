@@ -1,5 +1,5 @@
-import nodemailer from 'nodemailer';
 import pool from '../config/database';
+import { sendBrevoTransactionalEmail } from '../services/email.service';
 
 function parseEnvNumber(rawValue: string | undefined, fallback: number): number {
   if (!rawValue) {
@@ -32,19 +32,6 @@ function parseEnvBoolean(rawValue: string | undefined, fallback: boolean): boole
   return fallback;
 }
 
-const SMTP_PORT = parseEnvNumber(process.env.EMAIL_PORT, 587);
-const SMTP_SECURE = parseEnvBoolean(process.env.EMAIL_SECURE, false);
-
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
-  port: SMTP_PORT,
-  secure: SMTP_SECURE,
-  auth: {
-    user: process.env.EMAIL_INFO_USER || process.env.EMAIL_USER,
-    pass: process.env.EMAIL_INFO_PASSWORD || process.env.EMAIL_PASSWORD,
-  },
-});
-
 type SubmissionPayload = {
   name: string;
   email: string;
@@ -66,11 +53,10 @@ export async function savePublicSubmission(payload: SubmissionPayload) {
 
 export async function notifyPublicSubmission(payload: SubmissionPayload) {
   const recipient = payload.recipient || process.env.ORG_EMAIL_INFO || 'info@hocfam.org';
-  const fromAddress = process.env.EMAIL_INFO_USER || process.env.EMAIL_USER || recipient;
 
   try {
-    await transporter.sendMail({
-      from: `"HOCFAM Website" <${fromAddress}>`,
+    await sendBrevoTransactionalEmail({
+      from: '"HOCFAM Website" <info@hocfam.org>',
       to: recipient,
       replyTo: payload.email,
       subject: payload.subject,

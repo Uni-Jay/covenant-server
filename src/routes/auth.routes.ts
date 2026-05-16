@@ -46,7 +46,7 @@ function parseEnvNumber(rawValue: string | undefined, fallback: number): number 
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-const EMAIL_BLOCKING_WAIT_MS = parseEnvNumber(process.env.SMTP_BLOCKING_WAIT_MS, 2500);
+const EMAIL_BLOCKING_WAIT_MS = parseEnvNumber(process.env.EMAIL_BLOCKING_WAIT_MS, 2500);
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = Math.max(30, parseEnvNumber(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES, 180));
 
 // Register

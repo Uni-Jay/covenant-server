@@ -1,4 +1,4 @@
-import Brevo from '@getbrevo/brevo';
+import { BrevoClient } from '@getbrevo/brevo';
 
 export type EmailAddress = {
   email: string;
@@ -19,11 +19,7 @@ const DEFAULT_SENDER: EmailAddress = {
 };
 
 const rawBrevoApiKey = process.env.BREVO_API_KEY?.trim();
-const apiInstance = new Brevo.TransactionalEmailsApi();
-
-if (rawBrevoApiKey) {
-  apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, rawBrevoApiKey);
-}
+const brevo = rawBrevoApiKey ? new BrevoClient({ apiKey: rawBrevoApiKey }) : null;
 
 function normalizeAddress(input: string | EmailAddress | undefined, fallback: EmailAddress): EmailAddress {
   if (!input) {
@@ -93,7 +89,7 @@ export async function sendBrevoTransactionalEmail(options: BrevoMailOptions): Pr
   const replyTo = options.replyTo ? normalizeAddress(options.replyTo, DEFAULT_SENDER) : undefined;
 
   try {
-    await apiInstance.sendTransacEmail({
+    await brevo!.transactionalEmails.sendTransacEmail({
       sender,
       to,
       replyTo,

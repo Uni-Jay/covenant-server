@@ -1,6 +1,6 @@
-import nodemailer from 'nodemailer';
 import pool from '../config/database';
 import axios from 'axios';
+import { BrevoMailOptions, sendBrevoTransactionalEmail } from './email.service';
 
 const APP_BASE_URL = (process.env.APP_URL || 'https://hocfam.org').replace(/\/$/, '');
 
@@ -18,48 +18,11 @@ function parseEnvNumber(rawValue: string | undefined, fallback: number): number 
   const parsed = parseInt(firstNumericMatch[0], 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
-
-function parseEnvBoolean(rawValue: string | undefined, fallback: boolean): boolean {
-  if (!rawValue) {
-    return fallback;
-  }
-
-  const normalized = rawValue.trim().replace(/^['\"]|['\"]$/g, '').toLowerCase();
-  if (['true', '1', 'yes', 'on'].includes(normalized)) {
-    return true;
-  }
-  if (['false', '0', 'no', 'off'].includes(normalized)) {
-    return false;
-  }
-
-  return fallback;
-}
-
-const SMTP_TIMEOUT_MS = parseEnvNumber(process.env.SMTP_TIMEOUT_MS, 12000);
-const SMTP_PORT = parseEnvNumber(process.env.EMAIL_PORT, 587);
-const SMTP_SECURE = parseEnvBoolean(process.env.EMAIL_SECURE, false);
-const SMTP_FALLBACK_PORT = parseEnvNumber(process.env.EMAIL_FALLBACK_PORT, 465);
-const SMTP_FALLBACK_SECURE = parseEnvBoolean(process.env.EMAIL_FALLBACK_SECURE, true);
-const SMTP_DEBUG = parseEnvBoolean(process.env.SMTP_DEBUG, false);
-const SMTP_FAILURE_COOLDOWN_MS = parseEnvNumber(process.env.SMTP_FAILURE_COOLDOWN_MS, 60000);
-const ORG_INFO_EMAIL = process.env.ORG_EMAIL_INFO || 'info@hocfam.org';
-const SMTP_FROM_ADDRESS = process.env.SMTP_FROM_ADDRESS || ORG_INFO_EMAIL || process.env.EMAIL_USER || 'info@hocfam.org';
-const PASSWORD_RESET_FROM_ADDRESS = process.env.PASSWORD_RESET_FROM_ADDRESS || ORG_INFO_EMAIL || SMTP_FROM_ADDRESS;
+const ORG_INFO_EMAIL = 'info@hocfam.org';
+const EMAIL_FROM_ADDRESS = ORG_INFO_EMAIL;
+const PASSWORD_RESET_FROM_ADDRESS = ORG_INFO_EMAIL;
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = Math.max(30, parseEnvNumber(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES, 180));
-function looksLikeResendApiKey(rawValue: string | undefined): boolean {
-  return !!rawValue && /^re_[a-zA-Z0-9]/.test(rawValue.trim());
-}
-
-const rawBrevoApiKey = process.env.BREVO_API_KEY?.trim();
-const rawResendApiKey = process.env.RESEND_API_KEY?.trim();
-const RESEND_API_KEY = looksLikeResendApiKey(rawResendApiKey) ? rawResendApiKey : undefined;
-const BREVO_API_KEY = rawBrevoApiKey || (!RESEND_API_KEY ? rawResendApiKey : undefined);
-const RESEND_FROM = process.env.RESEND_FROM || SMTP_FROM_ADDRESS;
-const EMAIL_MODE = (process.env.EMAIL_MODE || 'auto').trim().toLowerCase();
-const RESEND_ONLY_MODE = EMAIL_MODE === 'resend' || EMAIL_MODE === 'api';
-const SMTP_ONLY_MODE = EMAIL_MODE === 'smtp';
-
-let smtpBackoffUntil = 0;
+type MailPayload = BrevoMailOptions;
 
 function formatPasswordResetExpiry(ttlMinutes: number): string {
   if (ttlMinutes % 60 === 0) {
@@ -69,286 +32,25 @@ function formatPasswordResetExpiry(ttlMinutes: number): string {
   return `${ttlMinutes} minutes`;
 }
 
-// Email configuration
-function createTransporter(port = SMTP_PORT, secure = SMTP_SECURE) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
-    port,
-    secure,
-    connectionTimeout: SMTP_TIMEOUT_MS,
-    greetingTimeout: SMTP_TIMEOUT_MS,
-    socketTimeout: SMTP_TIMEOUT_MS,
-    logger: SMTP_DEBUG,
-    debug: SMTP_DEBUG,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD,
-    },
-  });
-}
-
-function normalizeMailError(error: unknown) {
-  if (error instanceof Error) {
-    const errorWithMeta = error as Error & {
-      code?: string;
-      command?: string;
-      response?: string;
-      responseCode?: number;
-    };
-
-    return {
-      message: errorWithMeta.message,
-      code: errorWithMeta.code,
-      command: errorWithMeta.command,
-      responseCode: errorWithMeta.responseCode,
-      response: errorWithMeta.response,
-    };
-  }
-
-  if (typeof error === 'object' && error !== null) {
-    const errorObject = error as {
-      message?: unknown;
-      code?: unknown;
-      command?: unknown;
-      response?: unknown;
-      responseCode?: unknown;
-    };
-
-    const fallbackMessageSource = errorObject.message ?? errorObject;
-    let fallbackMessage = '';
-    try {
-      fallbackMessage = JSON.stringify(fallbackMessageSource);
-    } catch {
-      fallbackMessage = String(fallbackMessageSource);
-    }
-
-    return {
-      message: typeof errorObject.message === 'string' ? errorObject.message : fallbackMessage,
-      code: typeof errorObject.code === 'string' ? errorObject.code : undefined,
-      command: typeof errorObject.command === 'string' ? errorObject.command : undefined,
-      responseCode: typeof errorObject.responseCode === 'number' ? errorObject.responseCode : undefined,
-      response: typeof errorObject.response === 'string' ? errorObject.response : undefined,
-    };
-  }
-
-  return { message: String(error) };
-}
-
-function isConnectionLevelError(error: ReturnType<typeof normalizeMailError>): boolean {
-  return (
-    error.code === 'ETIMEDOUT' ||
-    error.code === 'ECONNREFUSED' ||
-    error.code === 'EHOSTUNREACH' ||
-    error.code === 'ENETUNREACH' ||
-    error.code === 'ENOTFOUND' ||
-    error.command === 'CONN'
-  );
-}
-
-function isTransientMailError(error: ReturnType<typeof normalizeMailError>): boolean {
-  return isConnectionLevelError(error) || /timeout|timed out/i.test(error.message || '');
-}
-
-function isSmtpBackoffActive(): boolean {
-  return smtpBackoffUntil > Date.now();
-}
-
-function activateSmtpBackoff(error: ReturnType<typeof normalizeMailError>) {
-  smtpBackoffUntil = Date.now() + SMTP_FAILURE_COOLDOWN_MS;
-  console.warn('Notification SMTP backoff activated', {
-    cooldownMs: SMTP_FAILURE_COOLDOWN_MS,
-    until: new Date(smtpBackoffUntil).toISOString(),
-    error,
-  });
-}
-
 async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
       setTimeout(() => {
-        const timeoutError = new Error(`${label} timed out after ${SMTP_TIMEOUT_MS}ms`) as Error & {
+        const timeoutError = new Error(`${label} timed out after 15000ms`) as Error & {
           code?: string;
           command?: string;
         };
         timeoutError.code = 'ETIMEDOUT';
         timeoutError.command = 'CONN';
         reject(timeoutError);
-      }, SMTP_TIMEOUT_MS);
+      }, 15000);
     }),
   ]);
 }
 
-async function sendViaResend(mailOptions: nodemailer.SendMailOptions, label: string): Promise<boolean> {
-  if (!RESEND_API_KEY) {
-    return false;
-  }
-
-  const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
-  const to = toList.filter(Boolean).map((item) => String(item));
-  if (!to.length) {
-    return false;
-  }
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: String(mailOptions.from || RESEND_FROM),
-        to,
-        subject: String(mailOptions.subject || ''),
-        html: String(mailOptions.html || ''),
-        reply_to: mailOptions.replyTo ? String(mailOptions.replyTo) : undefined,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`${label} failed via Resend`, {
-        status: response.status,
-        body: errorText,
-      });
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error(`${label} failed via Resend`, normalizeMailError(error));
-    return false;
-  }
-}
-
-async function sendViaBrevoAPI(mailOptions: nodemailer.SendMailOptions, label: string): Promise<boolean> {
-  if (!BREVO_API_KEY) {
-    console.warn(`${label} via Brevo API skipped - no API key configured`);
-    return false;
-  }
-
-  try {
-    const toList = Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to];
-    const to = toList.filter(Boolean).map((item) => ({
-      email: String(item),
-    }));
-
-    if (!to.length) {
-      return false;
-    }
-
-    // Brevo REST API v3 endpoint for transactional emails
-    const response = await axios.post(
-      'https://api.brevo.com/v3/smtp/email',
-      {
-        subject: String(mailOptions.subject || ''),
-        htmlContent: String(mailOptions.html || ''),
-        sender: {
-          email: String(mailOptions.from || SMTP_FROM_ADDRESS),
-          name: 'Household Of Covenant And Faith Apostolic Ministry',
-        },
-        to: to,
-      },
-      {
-        headers: {
-          'api-key': BREVO_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        timeout: 5000,
-      }
-    );
-
-    console.log(`✓ ${label} sent via Brevo API, messageId: ${response.data.messageId}`);
-    return true;
-  } catch (error) {
-    console.error(`${label} failed via Brevo API:`, error instanceof Error ? error.message : error);
-    return false;
-  }
-}
-
-async function sendMailWithFallback(mailOptions: nodemailer.SendMailOptions, label: string): Promise<boolean> {
-  if (RESEND_ONLY_MODE) {
-    if (!RESEND_API_KEY) {
-      throw new Error(`EMAIL_MODE=${EMAIL_MODE} but RESEND_API_KEY is not configured`);
-    }
-
-    return sendViaResend(mailOptions, `${label} (Resend mode)`);
-  }
-
-  if (isSmtpBackoffActive()) {
-    if (!SMTP_ONLY_MODE) {
-      const brevoResult = await sendViaBrevoAPI(mailOptions, `${label} (Brevo API via SMTP backoff)`);
-      if (brevoResult) return true;
-
-      const resendResult = await sendViaResend(mailOptions, `${label} (Resend fallback via SMTP backoff)`);
-      if (resendResult) return true;
-    }
-
-    throw {
-      message: `SMTP temporarily paused. Backoff active for ${Math.max(0, smtpBackoffUntil - Date.now())}ms`,
-      code: 'SMTP_BACKOFF',
-      command: 'CONN',
-    };
-  }
-
-  const transporter = createTransporter();
-  let lastError: unknown;
-
-  if (transporter) {
-    try {
-      await withTimeout(transporter.sendMail({
-        ...mailOptions,
-        from: mailOptions.from || `"Household Of Covenant And Faith Apostolic Ministry" <${SMTP_FROM_ADDRESS}>`,
-      }), `${label} (primary SMTP)`);
-      return true;
-    } catch (error) {
-      const normalizedError = normalizeMailError(error);
-      lastError = normalizedError;
-      if (isTransientMailError(normalizedError)) {
-        activateSmtpBackoff(normalizedError);
-      }
-      console.error(`${label} failed with primary SMTP transport`, normalizedError);
-
-      if (isConnectionLevelError(normalizedError) && (SMTP_FALLBACK_PORT !== SMTP_PORT || SMTP_FALLBACK_SECURE !== SMTP_SECURE)) {
-        const fallbackTransporter = createTransporter(SMTP_FALLBACK_PORT, SMTP_FALLBACK_SECURE);
-        if (fallbackTransporter) {
-          try {
-            await withTimeout(fallbackTransporter.sendMail({
-              ...mailOptions,
-              from: mailOptions.from || `"Household Of Covenant And Faith Apostolic Ministry" <${SMTP_FROM_ADDRESS}>`,
-            }), `${label} (fallback SMTP)`);
-            return true;
-          } catch (fallbackError) {
-            const normalizedFallbackError = normalizeMailError(fallbackError);
-            lastError = normalizedFallbackError;
-            if (isTransientMailError(normalizedFallbackError)) {
-              activateSmtpBackoff(normalizedFallbackError);
-            }
-            console.error(`${label} failed with fallback SMTP transport`, normalizedFallbackError);
-          }
-        }
-      }
-    }
-  }
-
-  if (!SMTP_ONLY_MODE) {
-    const brevoResult = await sendViaBrevoAPI(mailOptions, `${label} (Brevo API final fallback)`);
-    if (brevoResult) return true;
-
-    const resendResult = await sendViaResend(mailOptions, `${label} (Resend final fallback)`);
-    if (resendResult) return true;
-  }
-
-  if (lastError) {
-    throw lastError;
-  }
-
-  throw new Error(`${label} could not be sent because no valid mail transport is configured`);
+async function sendMailWithFallback(mailOptions: MailPayload, _label: string): Promise<boolean> {
+  return sendBrevoTransactionalEmail(mailOptions);
 }
 
 export const sendWelcomeEmail = async (
@@ -366,7 +68,7 @@ export const sendWelcomeEmail = async (
       : getMemberWelcomeEmail(firstName);
 
     await sendMailWithFallback({
-      from: `"Household Of Covenant And Faith Apostolic Ministry" <${SMTP_FROM_ADDRESS}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${EMAIL_FROM_ADDRESS}>`,
       to,
       subject,
       html: htmlContent,
@@ -584,7 +286,7 @@ export const sendEmailNotification = async (
     }
 
     await sendMailWithFallback({
-      from: `"Household Of Covenant And Faith Apostolic Ministry" <${SMTP_FROM_ADDRESS}>`,
+      from: `"Household Of Covenant And Faith Apostolic Ministry" <${EMAIL_FROM_ADDRESS}>`,
       to,
       subject,
       html: htmlContent,
@@ -749,7 +451,7 @@ export const sendPasswordResetEmail = async (
     console.log(`✓ Password reset email sent to ${to}`);
     return true;
   } catch (error) {
-    console.error('Password reset email error:', normalizeMailError(error));
+    console.error('Password reset email error:', error instanceof Error ? error.message : String(error));
     return false;
   }
 };
@@ -829,7 +531,7 @@ export const sendPasswordChangedEmail = async (
     console.log(`✓ Password changed notification sent to ${to}`);
     return true;
   } catch (error) {
-    console.error('Password changed email error:', normalizeMailError(error));
+    console.error('Password changed email error:', error instanceof Error ? error.message : String(error));
     return false;
   }
 };

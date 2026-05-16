@@ -3,20 +3,9 @@ import mysql from 'mysql2/promise';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission, hasUnifiedLeadershipAccess } from '../middleware/permissions.middleware';
 import pool from '../config/database';
-import nodemailer from 'nodemailer';
+import { sendBrevoTransactionalEmail } from '../services/email.service';
 
 const router = express.Router();
-
-// Email transporter configuration (provider-agnostic SMTP)
-const emailTransporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: (process.env.EMAIL_SECURE || 'false') === 'true',
-  auth: {
-    user: process.env.EMAIL_USER || 'noreply@hocfam.org',
-    pass: process.env.EMAIL_PASSWORD || ''
-  }
-});
 
 // SMS service configuration (Africa's Talking example)
 // You can also use Twilio by changing the API endpoint
@@ -27,8 +16,8 @@ const SMS_SENDER = process.env.SMS_SENDER || 'WORDCOV';
 // Helper function to send email
 async function sendEmail(to: string, subject: string, message: string) {
   try {
-    await emailTransporter.sendMail({
-      from: process.env.EMAIL_USER || 'Household Of Covenant And Faith Apostolic Ministry <noreply@hocfam.org>',
+    await sendBrevoTransactionalEmail({
+      from: '"Household Of Covenant And Faith Apostolic Ministry" <info@hocfam.org>',
       to,
       subject,
       html: message

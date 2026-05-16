@@ -1,23 +1,12 @@
 import cron from 'node-cron';
 import pool from '../config/database';
-import nodemailer from 'nodemailer';
-
-// Configure email transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: (process.env.EMAIL_SECURE || 'false') === 'true',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
+import { sendBrevoTransactionalEmail } from './email.service';
 
 // Send birthday email
 async function sendBirthdayEmail(email: string, name: string) {
   try {
-    await transporter.sendMail({
-      from: `"Household Of Covenant And Faith Apostolic Ministry" <${process.env.EMAIL_USER}>`,
+    await sendBrevoTransactionalEmail({
+      from: '"Household Of Covenant And Faith Apostolic Ministry" <info@hocfam.org>',
       to: email,
       subject: '🎂 Happy Birthday from Household Of Covenant And Faith Apostolic Ministry!',
       html: `
