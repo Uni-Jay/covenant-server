@@ -410,16 +410,7 @@ CREATE TABLE IF NOT EXISTS hymns (
   INDEX idx_category (category)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert default admin user (password: admin123)
-INSERT IGNORE INTO users (email, password, first_name, last_name, role, department) 
-VALUES (
-  'admin@wordofcovenant.org', 
-  '$2a$10$7/TiVsmwCcUPgJEc3zwKKOwitAFyQnVHA35oNncLiVfXhDu/3lGdS',
-  'Admin',
-  'User',
-  'admin',
-  'Media'
-);
+-- No default admin with a known password: create the first admin with `node create-admin-user.js`.
 
 -- Insert sample ministries
 INSERT IGNORE INTO ministries (name, description, leader, schedule) VALUES

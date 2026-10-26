@@ -458,13 +458,25 @@ router.post('/bible-study/enroll', async (req, res) => {
 });
 
 router.get('/livestream', async (_req, res) => {
+  // Set by Church Studio when the church goes live (see routes/studio.routes.ts); falls back to the env settings
+  const s: Record<string, string> = {};
+  try { const [rows]: any = await pool.query('SELECT k, v FROM site_settings'); rows.forEach((r: any) => { s[r.k] = r.v; }); } catch (e) { /* table not created yet */ }
+  const changed = s.live_changed ? Date.parse(s.live_changed) : 0;
+  // a stream can't be live for more than 8 hours without Church Studio saying so again
+  const isLive = s.live_on ? s.live_on === 'true' && Date.now() - changed < 8 * 3600e3 : (process.env.LIVESTREAM_IS_LIVE || 'false') === 'true';
+  let previous: any[] = [];
+  try {
+    const [rows]: any = await pool.query('SELECT id, title, preacher, date, thumbnail_url, video_url, audio_url FROM sermons ORDER BY date DESC, id DESC LIMIT 6');
+    previous = rows.map((r: any) => ({ id: r.id, title: r.title, preacher: r.preacher, date: r.date, imageUrl: r.thumbnail_url || '', videoUrl: r.video_url || '', audioUrl: r.audio_url || '' }));
+  } catch (e) { /* no sermons yet */ }
   res.json({
-    isLive: (process.env.LIVESTREAM_IS_LIVE || 'false') === 'true',
-    liveStreamUrl: process.env.LIVESTREAM_URL || 'https://www.youtube.com/channel/YOUR_CHANNEL_ID/live',
+    isLive,
+    liveStreamUrl: s.live_url || process.env.LIVESTREAM_URL || '',
+    channelUrl: s.youtube_channel || process.env.YOUTUBE_CHANNEL_URL || '',
+    facebookUrl: s.facebook_page || process.env.FACEBOOK_PAGE_URL || '',
     currentService: {
-      title: process.env.LIVESTREAM_TITLE || 'Sunday Service',
-      description: process.env.LIVESTREAM_DESCRIPTION || 'Join us for an inspiring time of worship, praise, and powerful Word.',
-      viewers: parseInt(process.env.LIVESTREAM_VIEWERS || '245'),
+      title: s.live_title || process.env.LIVESTREAM_TITLE || 'Sunday Service',
+      description: s.live_description || process.env.LIVESTREAM_DESCRIPTION || 'Join us for an inspiring time of worship, praise, and powerful Word.',
     },
     serviceTimes: [
       { title: 'Sunday School', time: '8:00 AM - 9:00 AM' },
@@ -473,11 +485,7 @@ router.get('/livestream', async (_req, res) => {
       { title: 'Bible Study', time: 'Thursday 6:00 PM - 7:00 PM' },
       { title: 'Monthly Vigil', time: 'Last Friday 11:00 PM - 4:00 AM' },
     ],
-    previousServices: [
-      { id: 1, title: 'Sunday Service', date: '2026-01-20', imageUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?w=400' },
-      { id: 2, title: 'Sunday Service', date: '2026-01-19', imageUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?w=400' },
-      { id: 3, title: 'Sunday Service', date: '2026-01-18', imageUrl: 'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?w=400' },
-    ],
+    previousServices: previous,
   });
 });
 

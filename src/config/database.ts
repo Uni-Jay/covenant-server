@@ -3,12 +3,26 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// TiDB Cloud (and most hosted MySQL) require an encrypted connection: DB_SSL=true
+export function dbSsl(prefix = 'DB'): any {
+  const on = (process.env[`${prefix}_SSL`] || '').toLowerCase();
+  if (on === 'true' || on === '1' || on === 'required') return { minVersion: 'TLSv1.2', rejectUnauthorized: true };
+  return undefined;
+}
+
+export function dbConfig(prefix = 'DB') {
+  return {
+    host: process.env[`${prefix}_HOST`] || 'localhost',
+    user: process.env[`${prefix}_USER`] || 'root',
+    password: process.env[`${prefix}_PASSWORD`] || '',
+    database: process.env[`${prefix}_NAME`] || 'word_of_covenant_db',
+    port: parseInt(process.env[`${prefix}_PORT`] || '3306'),
+    ssl: dbSsl(prefix),
+  };
+}
+
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'word_of_covenant_db',
-  port: parseInt(process.env.DB_PORT || '3306'),
+  ...dbConfig('DB'),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -25,7 +39,6 @@ pool.getConnection()
   })
   .catch(err => {
     console.error('❌ MySQL connection failed:', err.message);
-    console.error('⚠️  Please ensure MySQL/WAMP is running and database exists');
   });
 
 export default pool;

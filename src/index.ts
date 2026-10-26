@@ -39,6 +39,8 @@ import contentRoutes from './routes/content.routes';
 import calendarRoutes from './routes/calendar.routes';
 import calendarAdminRoutes from './routes/calendarAdmin.routes';
 import { initializeCalendarScheduler, stopCalendarScheduler } from './services/calendarScheduler';
+import studioRoutes from './routes/studio.routes';
+import { mirrorUploads, uploadsFallback } from './services/media.service';
 dotenv.config();
 
 // Ensure uploads directory exists
@@ -108,7 +110,10 @@ app.use('/uploads', (req, res, next) => {
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   res.header('Access-Control-Allow-Origin', '*');
   next();
-}, express.static(path.join(__dirname, '../uploads')));
+}, express.static(path.join(__dirname, '../uploads')), uploadsFallback);
+
+// every uploaded file is also kept for good on Cloudinary (the free server's disk is wiped when it sleeps)
+app.use(mirrorUploads);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -138,6 +143,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/content', contentRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/calendar/admin', calendarAdminRoutes);
+app.use('/api/studio', studioRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });

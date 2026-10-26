@@ -31,3 +31,8 @@ uploads/
 *.swp
 *.swo
 *~
+
+# never commit
+data-export/
+uploads/*
+!uploads/.gitkeep
