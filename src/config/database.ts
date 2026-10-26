@@ -24,7 +24,8 @@ export function dbConfig(prefix = 'DB') {
 const pool = mysql.createPool({
   ...dbConfig('DB'),
   waitForConnections: true,
-  connectionLimit: 10,
+  // the free database allows 5 connections in total; keep room for the setup step and for the next deploy
+  connectionLimit: Number(process.env.DB_POOL_SIZE) || 3,
   queueLimit: 0,
   connectTimeout: 30000,
   enableKeepAlive: true,

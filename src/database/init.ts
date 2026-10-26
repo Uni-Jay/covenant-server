@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
-export async function initializeDatabase() {
+export async function initializeDatabase(): Promise<boolean> {
   let connection;
   
   try {
@@ -40,7 +40,7 @@ export async function initializeDatabase() {
       
       if (!fs.existsSync(schemaPath)) {
         console.error('❌ Schema file not found at:', schemaPath);
-        return;
+        return false;
       }
       
       const schema = fs.readFileSync(schemaPath, 'utf8');
@@ -67,6 +67,7 @@ export async function initializeDatabase() {
     }
     
     await connection.end();
+    return true;
   } catch (error: any) {
     console.error('❌ Database initialization error:', error.message);
     if (error.code === 'PROTOCOL_CONNECTION_LOST') {
@@ -77,10 +78,10 @@ export async function initializeDatabase() {
       console.error('⚠️  Database connection refused - check host and port');
     }
     if (connection) {
-      await connection.end();
+      try { await connection.end(); } catch (e) { /* already closed */ }
     }
-    // Don't exit process, just log the error
-    // The app can still start and will fail when trying to use DB
+    // Don't exit: the caller tries again a little later (e.g. while the previous server version still holds the free database's few connections)
+    return false;
   }
 }
 

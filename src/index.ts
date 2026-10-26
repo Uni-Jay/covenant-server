@@ -174,8 +174,13 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log(`🔌 Socket.IO server ready`);
   console.log(`📱 Mobile devices on same WiFi can connect using your network IP`);
   
-  // Initialize database tables if needed
-  await initializeDatabase();
+  // Initialize database tables if needed. The free database allows only a few connections, and right after
+  // a deploy the previous server version may still hold them: try again every 20 seconds until it works.
+  for (let attempt = 1; attempt <= 15; attempt++) {
+    if (await initializeDatabase()) break;
+    console.log(`🔁 Database setup will be tried again in 20 seconds (attempt ${attempt} of 15)`);
+    await new Promise((r) => setTimeout(r, 20000));
+  }
   
   // Initialize calendar scheduler for reminders
   initializeCalendarScheduler();
