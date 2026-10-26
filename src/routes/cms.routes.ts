@@ -198,6 +198,18 @@ router.put('/me', upload.any(), wrap(async (req: any, res) => {
   res.json({ ok: true });
 }));
 
+/** Change my password (staff and members) */
+router.post('/me/password', wrap(async (req, res) => {
+  if (tooMany(req, 10)) return res.status(429).json({ message: 'Too many tries. Please wait a while.' });
+  const cur = String(req.body.current || ''), next = String(req.body.next || '');
+  if (next.length < 8) return res.status(400).json({ message: 'The new password needs at least 8 characters.' });
+  const u = (await q('SELECT id, password FROM users WHERE id = ?', [req.user?.id]))[0];
+  if (!u) return res.status(401).json({ message: 'Please sign in again.' });
+  if (u.password && !(await bcrypt.compare(cur, u.password))) return res.status(400).json({ message: 'Your current password is not right.' });
+  await q('UPDATE users SET password = ? WHERE id = ?', [await bcrypt.hash(next, 10), u.id]);
+  res.json({ ok: true });
+}));
+
 router.get('/me/giving', wrap(async (req, res) => {
   const m = await myMember(req);
   if (!m) return res.json({ items: [], total: 0 });

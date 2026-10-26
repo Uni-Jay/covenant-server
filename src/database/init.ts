@@ -96,6 +96,20 @@ async function secureAccounts(connection: any) {
     if (owner) {
       const [r]: any = await connection.query("UPDATE users SET role = 'super_admin', is_approved = 1 WHERE LOWER(email) = ?", [owner]);
       if (r.affectedRows) console.log('👑 Super admin:', owner);
+      // One-time password for the owner (ADMIN_TEMP_PASSWORD on the server). It is applied once per
+      // value, so after the owner changes their password it is not put back on the next restart.
+      const temp = (process.env.ADMIN_TEMP_PASSWORD || '').trim();
+      if (temp.length >= 10) {
+        const mark = require('crypto').createHash('sha256').update(owner + ':' + temp).digest('hex');
+        const [done]: any = await connection.query("SELECT v FROM site_settings WHERE k = 'owner_temp_password'");
+        if (!done[0] || done[0].v !== mark) {
+          const [u]: any = await connection.query('UPDATE users SET password = ?, is_approved = 1 WHERE LOWER(email) = ?', [bcrypt.hashSync(temp, 10), owner]);
+          if (u.affectedRows) {
+            await connection.query("INSERT INTO site_settings (k, v) VALUES ('owner_temp_password', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [mark]);
+            console.log('🔑 Temporary password set for', owner, '- change it after signing in.');
+          }
+        }
+      }
     }
     const weak = ['admin123', 'admin', 'password', '123456', '12345678', 'admin1234', 'church123'];
     const [admins]: any = await connection.query("SELECT id, email, password FROM users WHERE role IN ('admin', 'super_admin', 'pastor', 'media') AND is_approved = 1");
