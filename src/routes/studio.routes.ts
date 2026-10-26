@@ -5,6 +5,7 @@ import path from 'path';
 import multer from 'multer';
 import pool from '../config/database';
 import { saveToCloud, cloudOn } from '../services/media.service';
+import { phoneKey, splitName } from './cms.routes';
 
 /**
  * Church Studio (the church's media software) publishes to the website with a private key:
@@ -25,7 +26,7 @@ router.use(keyOk);
 
 const store = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => { const d = path.join(UPLOADS, file.fieldname === 'audio' ? 'sermons' : file.fieldname === 'image' ? 'gallery' : 'events'); fs.mkdirSync(d, { recursive: true }); cb(null, d); },
+    destination: (req, file, cb) => { const d = path.join(UPLOADS, file.fieldname === 'audio' ? 'sermons' : file.fieldname === 'image' ? 'gallery' : file.fieldname.startsWith('photo_') ? 'members' : 'events'); fs.mkdirSync(d, { recursive: true }); cb(null, d); },
     filename: (req, file, cb) => cb(null, `studio-${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1e6)}${path.extname(file.originalname || '').toLowerCase() || (file.fieldname === 'audio' ? '.mp3' : '.jpg')}`),
   }),
   limits: { fileSize: 95 * 1024 * 1024 },
@@ -101,6 +102,64 @@ router.post('/events/sync', store.any(), async (req: any, res) => {
     res.json({ ok: true, saved: ids.length, removed });
   } catch (e: any) { console.error('studio/events', e); res.status(500).json({ ok: false, message: e.message }); }
 });
+
+/**
+ * Church Studio's birthday register → the church management system's members.
+ * Only people whose details changed are sent (each has a signature). Details edited in the
+ * management system stay, unless the person changes them again in Church Studio.
+ */
+router.post('/members/sync', store.any(), async (req: any, res) => {
+  try {
+    let people: any[] = [];
+    try { people = JSON.parse(req.body.people || '[]'); } catch (e) { return res.status(400).json({ ok: false, message: 'Bad member data.' }); }
+    const photos: Record<string, Express.Multer.File> = {};
+    (req.files || []).forEach((f: Express.Multer.File) => { photos[f.fieldname.replace(/^photo_/, '')] = f; });
+    const n = (v: any, lo: number, hi: number) => { const x = parseInt(v, 10); return x >= lo && x <= hi ? x : null; };
+    let added = 0, updated = 0, linked = 0;
+    for (const p of people.slice(0, 2000)) {
+      const sid = String(p.id || '').slice(0, 40); if (!sid || !p.name) continue;
+      const sig = String(p.sig || '').slice(0, 64);
+      const nm = splitName(String(p.name));
+      const pk = phoneKey(p.phone);
+      const bd = n(p.day, 1, 31), bm = n(p.month, 1, 12), by = n(p.year, 1900, 2100), ad = n(p.annDay, 1, 31), am = n(p.annMonth, 1, 12);
+      const photo = photos[sid] ? await keep(photos[sid]) : null;
+      let [cur]: any = await pool.query('SELECT id, studio_sig FROM cms_members WHERE studio_id = ?', [sid]);
+      if (!cur.length && pk.length === 10 && bd && bm) {
+        // someone already typed into the management system: link them instead of adding twice
+        [cur] = await pool.query('SELECT id, studio_sig FROM cms_members WHERE studio_id IS NULL AND phone_key = ? AND birth_day = ? AND birth_month = ?', [pk, bd, bm]) as any;
+        if (cur.length) { await pool.query('UPDATE cms_members SET studio_id = ? WHERE id = ?', [sid, cur[0].id]); linked++; }
+      }
+      const vals = [nm.title, nm.first, nm.last, String(p.phone || '').slice(0, 30), pk, bd && bm ? bd : null, bd && bm ? bm : null, by,
+        ad && am ? ad : null, ad && am ? am : null, String(p.spouse || '').slice(0, 120), String(p.dept || '').slice(0, 120), p.consent ? 1 : 0, sig];
+      if (cur.length) {
+        if (cur[0].studio_sig === sig && !photo) continue;
+        await pool.query(`UPDATE cms_members SET title = ?, first_name = ?, last_name = ?, phone = ?, phone_key = ?, birth_day = ?, birth_month = ?, birth_year = ?,
+          ann_day = ?, ann_month = ?, spouse_name = IF(? = '', spouse_name, ?), department_text = ?, consent_screen = ?, studio_sig = ?,
+          marital_status = IF(ann_day IS NOT NULL AND marital_status = '', 'married', marital_status), gender = IF(gender = '', ?, gender), photo_url = COALESCE(?, photo_url) WHERE id = ?`,
+          [...vals.slice(0, 10), vals[10], vals[10], ...vals.slice(11), nm.gender, photo, cur[0].id]);
+        updated++;
+        await joinDept(cur[0].id, p.dept);
+      } else {
+        const [r]: any = await pool.query(`INSERT INTO cms_members (title, first_name, last_name, phone, phone_key, birth_day, birth_month, birth_year, ann_day, ann_month,
+          spouse_name, department_text, consent_screen, studio_sig, studio_id, photo_url, marital_status, gender, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'studio')`,
+          [...vals, sid, photo || '', ad && am ? 'married' : '', nm.gender]);
+        added++;
+        await joinDept(r.insertId, p.dept);
+      }
+    }
+    const [[tot]]: any = await pool.query("SELECT COUNT(*) n FROM cms_members WHERE studio_id IS NOT NULL");
+    res.json({ ok: true, added, updated, linked, total: tot.n });
+  } catch (e: any) { console.error('studio/members', e); res.status(500).json({ ok: false, message: e.message }); }
+});
+/** The department typed in the birthday form becomes a group in the management system */
+async function joinDept(memberId: number, dept: any) {
+  const name = String(dept || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  if (!name || /^(none|nil|no|n\/a|-)$/i.test(name)) return;
+  let [g]: any = await pool.query('SELECT id FROM cms_groups WHERE LOWER(name) = LOWER(?)', [name]);
+  let gid = g[0] && g[0].id;
+  if (!gid) { const [r]: any = await pool.query("INSERT INTO cms_groups (name, type) VALUES (?, 'department')", [name]); gid = r.insertId; }
+  await pool.query('INSERT IGNORE INTO cms_group_members (group_id, member_id) VALUES (?, ?)', [gid, memberId]);
+}
 
 /** "We're live" on the website's Live page. */
 router.post('/live', async (req, res) => {

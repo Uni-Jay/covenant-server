@@ -4,6 +4,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { dbConfig } from '../config/database';
 import { migrateFromOldDatabase } from './migrate';
+import { ensureCmsTables } from './cms';
 import bcrypt from 'bcryptjs';
 
 dotenv.config();
@@ -58,6 +59,7 @@ export async function initializeDatabase() {
       k VARCHAR(64) PRIMARY KEY, v TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) DEFAULT CHARSET=utf8mb4`);
     await secureAccounts(connection);
+    await ensureCmsTables(connection);
 
     for (const [table, column] of [['events', 'studio_id VARCHAR(64) NULL'], ['sermons', 'studio_id VARCHAR(80) NULL'], ['events', 'end_date DATE NULL']]) {
       try { await connection.query(`ALTER TABLE ${table} ADD COLUMN ${column}`); }

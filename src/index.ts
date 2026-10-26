@@ -39,6 +39,7 @@ import contentRoutes from './routes/content.routes';
 import calendarRoutes from './routes/calendar.routes';
 import calendarAdminRoutes from './routes/calendarAdmin.routes';
 import { initializeCalendarScheduler, stopCalendarScheduler } from './services/calendarScheduler';
+import cmsRoutes from './routes/cms.routes';
 import studioRoutes from './routes/studio.routes';
 import { mirrorUploads, uploadsFallback } from './services/media.service';
 dotenv.config();
@@ -144,6 +145,7 @@ app.use('/api/content', contentRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/calendar/admin', calendarAdminRoutes);
 app.use('/api/studio', studioRoutes);
+app.use('/api/cms', cmsRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });

@@ -13,9 +13,10 @@ export type BrevoMailOptions = {
   html: string;
 };
 
+// EMAIL_FROM must be a sender verified in Brevo (e.g. the church Gmail address)
 const DEFAULT_SENDER: EmailAddress = {
-  email: 'info@hocfam.org',
-  name: 'Household Of Covenant And Faith Apostolic Ministry',
+  email: process.env.EMAIL_FROM?.trim() || 'info@hocfam.org',
+  name: process.env.EMAIL_FROM_NAME?.trim() || 'Household Of Covenant And Faith Apostolic Ministry',
 };
 
 const rawBrevoApiKey = process.env.BREVO_API_KEY?.trim();
@@ -86,6 +87,8 @@ export async function sendBrevoTransactionalEmail(options: BrevoMailOptions): Pr
   }
 
   const sender = normalizeAddress(options.from, DEFAULT_SENDER);
+  // Brevo only sends from a verified address: with EMAIL_FROM set, every email uses it (the display name is kept)
+  if (process.env.EMAIL_FROM?.trim()) sender.email = process.env.EMAIL_FROM.trim();
   const replyTo = options.replyTo ? normalizeAddress(options.replyTo, DEFAULT_SENDER) : undefined;
 
   try {
