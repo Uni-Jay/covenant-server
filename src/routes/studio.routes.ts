@@ -84,8 +84,10 @@ router.post('/events/sync', store.any(), async (req: any, res) => {
       const desc = [ev.note, ev.venue ? 'Venue: ' + ev.venue : ''].filter(Boolean).join('\n');
       const [found]: any = await pool.query('SELECT id FROM events WHERE studio_id = ?', [sid]);
       if (found.length) {
-        await pool.query('UPDATE events SET title=?, description=?, date=?, end_date=?, time=?, location=?, image_url=COALESCE(?, image_url), category=? WHERE id=?',
-          [String(ev.title).slice(0, 255), desc, ev.start, ev.end || null, String(ev.time || '').slice(0, 50), String(ev.venue || '').slice(0, 255), img, 'Church programme', found[0].id]);
+        // keepFlyer false = the flyer was removed in Church Studio
+        const keepOld = ev.keepFlyer === undefined || !!ev.keepFlyer;
+        await pool.query('UPDATE events SET title=?, description=?, date=?, end_date=?, time=?, location=?, image_url=IF(?, COALESCE(?, image_url), NULL), category=? WHERE id=?',
+          [String(ev.title).slice(0, 255), desc, ev.start, ev.end || null, String(ev.time || '').slice(0, 50), String(ev.venue || '').slice(0, 255), keepOld ? 1 : 0, img, 'Church programme', found[0].id]);
       } else {
         await pool.query('INSERT INTO events (title, description, date, end_date, time, location, image_url, category, studio_id) VALUES (?,?,?,?,?,?,?,?,?)',
           [String(ev.title).slice(0, 255), desc, ev.start, ev.end || null, String(ev.time || '').slice(0, 50), String(ev.venue || '').slice(0, 255), img, 'Church programme', sid]);
@@ -105,7 +107,7 @@ router.post('/live', async (req, res) => {
   try {
     const b = req.body || {};
     await setting('live_on', b.isLive ? 'true' : 'false');
-    if (b.url) await setting('live_url', String(b.url).slice(0, 500));
+    if (b.isLive) await setting('live_url', String(b.url || '').slice(0, 500));
     if (b.title) await setting('live_title', String(b.title).slice(0, 200));
     if (b.description != null) await setting('live_description', String(b.description).slice(0, 500));
     await setting('live_changed', new Date().toISOString());
