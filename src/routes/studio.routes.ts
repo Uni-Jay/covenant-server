@@ -203,6 +203,22 @@ router.post('/birthdays/ack', async (req, res) => {
   } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
 });
 
+/** Messages sent with the church screen's QR code, for Church Studio's Messages tab */
+router.get('/inbox/pending', async (_req, res) => {
+  try {
+    const [rows]: any = await pool.query('SELECT id, type, name, from_place, phone, text, first_time, private_req, at FROM cms_inbox WHERE pulled = 0 ORDER BY id LIMIT 200');
+    res.json({ ok: true, items: rows.map((r: any) => ({ id: r.id, type: r.type, name: r.name, from: r.from_place, phone: r.phone, text: r.text || '', first: !!r.first_time, private: !!r.private_req, t: new Date(r.at).getTime() })) });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+router.post('/inbox/ack', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map((x: any) => parseInt(x, 10)).filter((x: number) => x > 0).slice(0, 500);
+    if (ids.length) await pool.query(`UPDATE cms_inbox SET pulled = 1 WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+    await pool.query('DELETE FROM cms_inbox WHERE pulled = 1 AND at < DATE_SUB(NOW(), INTERVAL 60 DAY)');
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+
 /** "We're live" on the website's Live page. */
 router.post('/live', async (req, res) => {
   try {

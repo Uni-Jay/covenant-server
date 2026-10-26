@@ -172,6 +172,29 @@ router.post('/public/birthday', wrap(async (req, res) => {
   lastBday[ip] = Date.now();
   res.json({ ok: true });
 }));
+/** The church screen's QR code: prayer request, testimony or "I'm visiting" card. Church Studio shows them in Messages. */
+const lastMsg: Record<string, number> = {};
+router.post('/public/message', wrap(async (req, res) => {
+  const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  if (lastMsg[ip] && Date.now() - lastMsg[ip] < 3000) return res.status(429).json({ message: 'Please wait a moment and send again.' });
+  if (tooMany(req, 120)) return res.status(429).json({ message: 'Too many messages from this connection. Please try again later.' });
+  const b = req.body || {}, type = String(b.type || '');
+  if (!/^(prayer|testimony|visitor)$/.test(type)) return res.status(400).json({ message: 'Something was missing.' });
+  const m = { name: s(b.name, 60), from: s(b.from, 60), phone: s(b.phone, 30), text: s(b.text, 1200), first: !!b.first, priv: !!b.private };
+  if (type !== 'visitor' && !m.text) return res.status(400).json({ message: 'Please type your message.' });
+  if (type === 'visitor' && !m.name) return res.status(400).json({ message: 'Please type your name.' });
+  await q('INSERT INTO cms_inbox (type, name, from_place, phone, text, first_time, private_req) VALUES (?,?,?,?,?,?,?)', [type, m.name, m.from, m.phone, m.text, m.first ? 1 : 0, m.priv ? 1 : 0]);
+  // also where the church office already looks: prayer requests in the website admin, first timers in the church office
+  try {
+    if (type === 'prayer') await q('INSERT INTO prayer_requests (name, phone, request, category, is_anonymous) VALUES (?,?,?,?,?)', [m.name || null, m.phone || null, m.text, 'church-service', m.name ? 0 : 1]);
+    if (type === 'visitor' && m.first) {
+      const svc = (await q('SELECT id FROM cms_services WHERE date = ? ORDER BY id DESC LIMIT 1', [today()]))[0];
+      await q(`INSERT INTO cms_first_timers (name, phone, address, visit_date, service_id, source) VALUES (?,?,?,?,?,'form')`, [m.name, m.phone, m.from, today(), svc ? svc.id : null]);
+    }
+  } catch (e) { /* the message itself is saved */ }
+  lastMsg[ip] = Date.now();
+  res.json({ ok: true });
+}));
 /** A member changes their photo: they prove it's them with the phone number and birthday they registered with */
 router.post('/public/birthday/update', wrap(async (req, res) => {
   if (tooMany(req, 20)) return res.status(429).json({ message: 'Too many tries. Please wait a while, or ask the media team to change your photo.' });

@@ -165,6 +165,20 @@ const TABLES: string[] = [
     at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX (member_id)
   ) ${T}`,
+  // prayer requests, testimonies and visitor cards sent with the church screen's QR code (hocfam.org/message)
+  `CREATE TABLE IF NOT EXISTS cms_inbox (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(12) NOT NULL,
+    name VARCHAR(80) NOT NULL DEFAULT '',
+    from_place VARCHAR(80) NOT NULL DEFAULT '',
+    phone VARCHAR(30) NOT NULL DEFAULT '',
+    text TEXT,
+    first_time TINYINT(1) NOT NULL DEFAULT 0,
+    private_req TINYINT(1) NOT NULL DEFAULT 0,
+    pulled TINYINT(1) NOT NULL DEFAULT 0,
+    at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX (pulled)
+  ) ${T}`,
   `CREATE TABLE IF NOT EXISTS cms_audit (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NULL, user_name VARCHAR(120) NOT NULL DEFAULT '',
