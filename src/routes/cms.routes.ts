@@ -115,6 +115,94 @@ router.post('/public/first-timer', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ------------------------------------------------------------------ birthday register on the website (always on, one link)
+const BDAY_TITLES = /^[\w .()'-]{0,30}$/;
+const jpegOf = (v: any): Buffer | null => {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(v || ''));
+  if (!m || m[1].length > 2.2e6) return null;
+  const b = Buffer.from(m[1], 'base64'); return b.length > 1000 ? b : null;
+};
+async function joinDeptGroup(memberId: number, dept: any) {
+  const name = s(dept, 120).replace(/\s+/g, ' ');
+  if (!name || /^(none|nil|no|n\/a|-)$/i.test(name)) return;
+  let g = (await q('SELECT id FROM cms_groups WHERE LOWER(name) = LOWER(?)', [name]))[0];
+  if (!g) { const r: any = await q("INSERT INTO cms_groups (name, type) VALUES (?, 'department')", [name]); g = { id: r.insertId }; }
+  await q('INSERT IGNORE INTO cms_group_members (group_id, member_id) VALUES (?, ?)', [g.id, memberId]);
+}
+const lastBday: Record<string, number> = {};
+router.post('/public/birthday', wrap(async (req, res) => {
+  const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  if (lastBday[ip] && Date.now() - lastBday[ip] < 4000) return res.status(429).json({ message: 'Please wait a few seconds and send again.' });
+  if (tooMany(req, 80)) return res.status(429).json({ message: 'Too many forms from this connection. Please try again later.' });
+  const b = req.body || {};
+  const title = BDAY_TITLES.test(String(b.title || '')) ? s(b.title, 30) : '';
+  const raw = s(b.name, 70), day = int(b.day), month = int(b.month);
+  if (!raw || !(day! >= 1 && day! <= 31) || !(month! >= 1 && month! <= 12)) return res.status(400).json({ message: 'Please type your name and choose your birthday.' });
+  const full = (title ? title + ' ' : '') + raw;
+  const n = splitName(full), pk = phoneKey(b.phone), year = int(b.year);
+  const annDay = int(b.annDay), annMonth = int(b.annMonth);
+  const photo = jpegOf(b.photo);
+  // the same person sending again (same name or same phone, same birthday) updates their earlier entry
+  const all = await q(`SELECT id, title, first_name, last_name, phone_key, studio_id FROM cms_members WHERE birth_day = ? AND birth_month = ?`, [day, month]);
+  const same = all.find((m: any) => fullName(m).toLowerCase() === full.toLowerCase() || [m.first_name, m.last_name].join(' ').trim().toLowerCase() === raw.toLowerCase())
+    || (pk.length === 10 ? all.find((m: any) => m.phone_key === pk) : null);
+  const vals = { title: n.title, first_name: n.first, last_name: n.last, gender: n.gender, phone: s(b.phone, 30), phone_key: pk, birth_day: day, birth_month: month,
+    birth_year: year && year >= 1900 && year <= 2100 ? year : null, ann_day: annDay && annMonth ? annDay : null, ann_month: annDay && annMonth ? annMonth : null,
+    spouse_name: s(b.spouse, 120), department_text: s(b.dept, 120), consent_screen: b.consent ? 1 : 0 };
+  let id: number;
+  if (same) {
+    id = same.id;
+    await q(`UPDATE cms_members SET title = ?, first_name = ?, last_name = ?, gender = IF(gender = '', ?, gender), phone = ?, phone_key = ?, birth_day = ?, birth_month = ?,
+      birth_year = COALESCE(?, birth_year), ann_day = ?, ann_month = ?, spouse_name = ?, department_text = ?, consent_screen = ?,
+      marital_status = IF(? IS NOT NULL AND marital_status = '', 'married', marital_status), studio_id = COALESCE(studio_id, ?) WHERE id = ?`,
+      [vals.title, vals.first_name, vals.last_name, vals.gender, vals.phone, vals.phone_key, day, month, vals.birth_year, vals.ann_day, vals.ann_month,
+        vals.spouse_name, vals.department_text, vals.consent_screen, vals.ann_day, 'w' + id, id]);
+  } else {
+    const r: any = await q(`INSERT INTO cms_members (title, first_name, last_name, gender, phone, phone_key, birth_day, birth_month, birth_year, ann_day, ann_month,
+      spouse_name, department_text, consent_screen, marital_status, status, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'member', 'self')`,
+      [vals.title, vals.first_name, vals.last_name, vals.gender, vals.phone, vals.phone_key, day, month, vals.birth_year, vals.ann_day, vals.ann_month,
+        vals.spouse_name, vals.department_text, vals.consent_screen, vals.ann_day ? 'married' : '']);
+    id = r.insertId;
+    await q('UPDATE cms_members SET studio_id = ? WHERE id = ?', ['w' + id, id]);
+  }
+  await joinDeptGroup(id, b.dept);
+  await q('DELETE FROM cms_form_queue WHERE member_id = ?', [id]);
+  await q('INSERT INTO cms_form_queue (member_id, kind, photo) VALUES (?, ?, ?)', [id, 'new', photo]);
+  if (photo) await q('UPDATE cms_members SET photo_url = ? WHERE id = ?', [`/api/cms/public/photo/${id}?v=${Date.now()}`, id]);
+  lastBday[ip] = Date.now();
+  res.json({ ok: true });
+}));
+/** A member changes their photo: they prove it's them with the phone number and birthday they registered with */
+router.post('/public/birthday/update', wrap(async (req, res) => {
+  if (tooMany(req, 20)) return res.status(429).json({ message: 'Too many tries. Please wait a while, or ask the media team to change your photo.' });
+  const b = req.body || {}, pk = phoneKey(b.phone), day = int(b.day), month = int(b.month);
+  if (pk.length < 10 || !day || !month) return res.status(400).json({ message: 'Type the phone number and choose the birthday you registered with.' });
+  let found = await q(`SELECT id, title, first_name, last_name, photo_url FROM cms_members WHERE phone_key = ? AND birth_day = ? AND birth_month = ? AND status <> 'inactive'`, [pk, day, month]);
+  if (!found.length) return res.status(404).json({ message: 'We couldn’t find you with that phone number and birthday. Check them, or register as new.' });
+  if (found.length > 1) {
+    if (!b.who) return res.json({ ok: false, choose: found.map((m: any) => ({ id: m.id, name: fullName(m) })) });
+    found = found.filter((m: any) => String(m.id) === String(b.who));
+    if (!found.length) return res.status(400).json({ message: 'Please choose your name.' });
+  }
+  const m = found[0];
+  if (b.check) return res.json({ ok: true, name: fullName(m), hasPhoto: !!m.photo_url });
+  const photo = jpegOf(b.photo);
+  if (!photo) return res.status(400).json({ message: 'Please choose your new photo.' });
+  if (b.consent != null) await q('UPDATE cms_members SET consent_screen = ? WHERE id = ?', [b.consent ? 1 : 0, m.id]);
+  await q(`DELETE FROM cms_form_queue WHERE member_id = ? AND kind = 'photo'`, [m.id]);
+  await q('INSERT INTO cms_form_queue (member_id, kind, photo) VALUES (?, ?, ?)', [m.id, 'photo', photo]);
+  await q('UPDATE cms_members SET photo_url = ?, studio_id = COALESCE(studio_id, ?) WHERE id = ?', [`/api/cms/public/photo/${m.id}?v=${Date.now()}`, 'w' + m.id, m.id]);
+  res.json({ ok: true, name: fullName(m) });
+}));
+/** Photos sent on the website, until Church Studio has collected them */
+router.get('/public/photo/:id', wrap(async (req, res) => {
+  const r = (await q('SELECT photo FROM cms_form_queue WHERE member_id = ? AND photo IS NOT NULL ORDER BY id DESC LIMIT 1', [req.params.id]))[0];
+  if (!r) return res.status(404).end();
+  res.setHeader('Content-Type', 'image/jpeg'); res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.send(r.photo);
+}));
+
 // ------------------------------------------------------------------ member portal sign-up (website account + link to the church register)
 async function tryLink(userId: number, phone: string, bd: number | null, bm: number | null, email: string) {
   const pk = phoneKey(phone);

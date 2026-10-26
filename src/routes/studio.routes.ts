@@ -161,6 +161,48 @@ async function joinDept(memberId: number, dept: any) {
   await pool.query('INSERT IGNORE INTO cms_group_members (group_id, member_id) VALUES (?, ?)', [gid, memberId]);
 }
 
+/** Birthday registrations and new photos sent on the website, for Church Studio to collect */
+router.get('/birthdays/pending', async (_req, res) => {
+  try {
+    const [rows]: any = await pool.query(`SELECT q.id qid, q.kind, q.at, q.member_id, q.photo IS NOT NULL has_photo, m.title, m.first_name, m.last_name, m.phone, m.birth_day, m.birth_month, m.birth_year,
+      m.ann_day, m.ann_month, m.spouse_name, m.department_text, m.consent_screen, m.studio_id FROM cms_form_queue q JOIN cms_members m ON m.id = q.member_id ORDER BY q.id`);
+    const by: Record<number, any> = {};
+    for (const r of rows) {
+      const it = by[r.member_id] || (by[r.member_id] = { qids: [], kind: 'photo', studioId: r.studio_id || 'w' + r.member_id, name: [r.title, r.first_name, r.last_name].filter(Boolean).join(' '),
+        day: r.birth_day, month: r.birth_month, year: r.birth_year || '', phone: r.phone, dept: r.department_text, spouse: r.spouse_name, consent: !!r.consent_screen,
+        annDay: r.ann_day || '', annMonth: r.ann_month || '', photoQid: null });
+      it.qids.push(r.qid); if (r.kind === 'new') it.kind = 'new'; if (r.has_photo) it.photoQid = r.qid;
+    }
+    res.json({ ok: true, items: Object.values(by).slice(0, 300) });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+router.get('/birthdays/photo/:qid', async (req, res) => {
+  const [rows]: any = await pool.query('SELECT photo FROM cms_form_queue WHERE id = ?', [req.params.qid]);
+  if (!rows[0] || !rows[0].photo) return res.status(404).end();
+  res.setHeader('Content-Type', 'image/jpeg'); res.send(rows[0].photo);
+});
+/** Church Studio has them now. If it already had the person under another id, the two are joined. */
+router.post('/birthdays/ack', async (req, res) => {
+  try {
+    const done: any[] = Array.isArray(req.body?.done) ? req.body.done.slice(0, 600) : [];
+    for (const d of done) {
+      const qid = parseInt(d.qid, 10); if (!qid) continue;
+      const [[row]]: any = await pool.query('SELECT member_id FROM cms_form_queue WHERE id = ?', [qid]);
+      await pool.query('DELETE FROM cms_form_queue WHERE id = ?', [qid]);
+      const sid = String(d.studioId || '').slice(0, 40);
+      if (!row || !sid) continue;
+      const [[m]]: any = await pool.query('SELECT id, studio_id FROM cms_members WHERE id = ?', [row.member_id]);
+      if (!m || m.studio_id === sid) continue;
+      const [[other]]: any = await pool.query('SELECT id FROM cms_members WHERE studio_id = ? AND id <> ?', [sid, m.id]);
+      if (other) {   // the same person already came from Church Studio: keep that one
+        const [[left]]: any = await pool.query('SELECT COUNT(*) n FROM cms_form_queue WHERE member_id = ?', [m.id]);
+        if (!left.n) { await pool.query('DELETE FROM cms_group_members WHERE member_id = ?', [m.id]); await pool.query('DELETE FROM cms_members WHERE id = ? AND user_id IS NULL', [m.id]); }
+      } else await pool.query('UPDATE cms_members SET studio_id = ? WHERE id = ?', [sid, m.id]);
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+
 /** "We're live" on the website's Live page. */
 router.post('/live', async (req, res) => {
   try {

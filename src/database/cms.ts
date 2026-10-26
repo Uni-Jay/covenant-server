@@ -156,6 +156,15 @@ const TABLES: string[] = [
     sent_by INT NULL,
     at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ${T}`,
+  // birthday register filled on the website (hocfam.org/birthday): waits here until Church Studio collects it
+  `CREATE TABLE IF NOT EXISTS cms_form_queue (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    member_id INT NOT NULL,
+    kind VARCHAR(10) NOT NULL DEFAULT 'new',
+    photo MEDIUMBLOB NULL,
+    at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX (member_id)
+  ) ${T}`,
   `CREATE TABLE IF NOT EXISTS cms_audit (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NULL, user_name VARCHAR(120) NOT NULL DEFAULT '',
