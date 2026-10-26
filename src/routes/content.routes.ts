@@ -489,4 +489,41 @@ router.get('/livestream', async (_req, res) => {
   });
 });
 
+// ---- About page: leaders and the pastor's message, edited from Admin → Leadership ----
+type Leader = { name: string; role: string; photo?: string };
+type AboutInfo = { pastorName: string; pastorRole: string; pastorPhoto: string; pastorMessage: string; leaders: Leader[] };
+const emptyAbout: AboutInfo = { pastorName: '', pastorRole: '', pastorPhoto: '', pastorMessage: '', leaders: [] };
+const clip = (v: any, n: number) => String(v ?? '').trim().slice(0, n);
+
+router.get('/about', async (_req, res) => {
+  try {
+    const [rows]: any = await pool.query("SELECT v FROM site_settings WHERE k = 'about'");
+    res.json(rows[0] ? { ...emptyAbout, ...JSON.parse(rows[0].v) } : emptyAbout);
+  } catch (e) {
+    res.json(emptyAbout);
+  }
+});
+
+router.put('/about', authenticate, isAdminOrMedia, upload.any(), async (req: any, res) => {
+  try {
+    const body = JSON.parse(req.body.data || '{}');
+    const files: Record<string, string> = {};
+    (req.files || []).forEach((f: any) => { if (/^image\//.test(f.mimetype)) files[f.fieldname] = `/uploads/others/${f.filename}`; });
+    const leaders: Leader[] = (Array.isArray(body.leaders) ? body.leaders : []).slice(0, 24)
+      .map((l: any, i: number) => ({ name: clip(l.name, 80), role: clip(l.role, 80), photo: files[`photo_${i}`] || clip(l.photo, 400) }))
+      .filter((l: Leader) => l.name);
+    const info: AboutInfo = {
+      pastorName: clip(body.pastorName, 80),
+      pastorRole: clip(body.pastorRole, 80),
+      pastorPhoto: files.pastor_photo || clip(body.pastorPhoto, 400),
+      pastorMessage: clip(body.pastorMessage, 4000),
+      leaders,
+    };
+    await pool.query('INSERT INTO site_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)', ['about', JSON.stringify(info)]);
+    res.json(info);
+  } catch (e) {
+    res.status(400).json({ message: 'Could not save the leadership details' });
+  }
+});
+
 export default router;

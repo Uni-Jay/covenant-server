@@ -8,13 +8,14 @@ const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    const [events]: any = await pool.execute('SELECT * FROM events ORDER BY date DESC');
+    const [events]: any = await pool.execute('SELECT * FROM events ORDER BY date ASC');
     // Convert snake_case to camelCase for frontend
     const formattedEvents = events.map((event: any) => ({
       id: event.id,
       title: event.title,
       description: event.description,
       date: event.date,
+      endDate: event.end_date || null,
       time: event.time,
       location: event.location,
       imageUrl: event.image_url,
