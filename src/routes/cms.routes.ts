@@ -226,6 +226,47 @@ router.get('/public/photo/:id', wrap(async (req, res) => {
   res.send(r.photo);
 }));
 
+// ------------------------------------------------------------------ sermon details from the pastor (hocfam.org/sermon?k=…): no sign-in, the link carries a private code
+async function sermonKey(): Promise<string> {
+  const r = (await q("SELECT v FROM site_settings WHERE k = 'sermon_prep_key'"))[0];
+  return r ? String(r.v || '') : '';
+}
+async function sermonKeyOk(k: any) {
+  const want = await sermonKey(), got = String(k || '');
+  return want.length >= 10 && got.length === want.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want));
+}
+const txt = (v: any, n: number) => String(v ?? '').replace(/\r/g, '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, n);
+const lines = (v: any, n: number, m: number) => (Array.isArray(v) ? v : String(v ?? '').split(/\n/)).map((x: any) => s(x, m)).filter(Boolean).slice(0, n);
+export function sermonClean(b: any) {
+  const pts = (Array.isArray(b.points) ? b.points : []).slice(0, 15).map((p: any) => ({
+    h: s(p?.h, 200), refs: s(p?.refs, 160), body: txt(p?.body, 4000), illus: txt(p?.illus, 2000), subTitle: s(p?.subTitle, 120),
+    subs: (Array.isArray(p?.subs) ? p.subs : []).slice(0, 15).map((x: any) => ({ h: s(x?.h, 200), refs: s(x?.refs, 160), body: txt(x?.body, 2000) })).filter((x: any) => x.h || x.body),
+  })).filter((p: any) => p.h || p.body || p.subs.length);
+  return {
+    series: s(b.series, 100), title: s(b.title, 140), subtitle: s(b.subtitle, 160), preacher: s(b.preacher, 80), role: s(b.role, 60),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(b.date)) ? String(b.date) : '', service: s(b.service, 80), text: s(b.text, 80), version: s(b.version, 20),
+    memory: s(b.memory, 80), memoryText: txt(b.memoryText, 600), intro: txt(b.intro, 6000), points: pts, apply: lines(b.apply, 12, 300),
+    conclusion: txt(b.conclusion, 6000), prayers: lines(b.prayers, 15, 300), declaration: txt(b.declaration, 2000), altar: txt(b.altar, 1500),
+    verses: lines(b.verses, 40, 60), note: txt(b.note, 600),
+  };
+}
+router.get('/public/sermon-prep/check', wrap(async (req, res) => {
+  if (tooMany(req, 120)) return res.status(429).json({ message: 'Too many tries. Please wait a little.' });
+  res.json({ ok: await sermonKeyOk(req.query.k) });
+}));
+router.post('/public/sermon-prep', wrap(async (req, res) => {
+  if (tooMany(req, 60)) return res.status(429).json({ message: 'Too many sends from this connection. Please wait a little and try again.' });
+  const b = req.body || {};
+  if (!(await sermonKeyOk(b.k))) return res.status(403).json({ message: 'This link has changed. Please ask the media team for the current sermon link.' });
+  const it = sermonClean(b);
+  if (!it.title && !it.points.length) return res.status(400).json({ message: 'Type the sermon title first.' });
+  // the same preacher correcting the same service replaces what has not been collected yet
+  await q('DELETE FROM cms_sermon_prep WHERE collected = 0 AND preacher = ? AND sdate = ?', [it.preacher, it.date]);
+  await q('INSERT INTO cms_sermon_prep (title, preacher, sdate, data) VALUES (?, ?, ?, ?)', [it.title, it.preacher, it.date, JSON.stringify(it)]);
+  await q('DELETE FROM cms_sermon_prep WHERE collected = 1 AND at < NOW() - INTERVAL 180 DAY');
+  res.json({ ok: true });
+}));
+
 // ------------------------------------------------------------------ member portal sign-up (website account + link to the church register)
 async function tryLink(userId: number, phone: string, bd: number | null, bm: number | null, email: string) {
   const pk = phoneKey(phone);

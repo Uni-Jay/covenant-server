@@ -219,6 +219,29 @@ router.post('/inbox/ack', async (req, res) => {
   } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
 });
 
+/** The pastor's sermon link: Church Studio sets its private code, then collects what pastors send */
+router.post('/sermon-prep/key', async (req, res) => {
+  try {
+    const k = String(req.body?.key || '');
+    if (!/^[\w-]{10,40}$/.test(k)) return res.status(400).json({ ok: false, message: 'That code is not valid.' });
+    await pool.query("INSERT INTO site_settings (k, v) VALUES ('sermon_prep_key', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [k]);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+router.get('/sermon-prep/pending', async (_req, res) => {
+  try {
+    const [rows]: any = await pool.query('SELECT id, data, at FROM cms_sermon_prep WHERE collected = 0 ORDER BY id LIMIT 50');
+    res.json({ ok: true, items: rows.map((r: any) => { let d: any = {}; try { d = JSON.parse(r.data); } catch (e) {} return Object.assign(d, { webId: r.id, t: new Date(r.at).getTime() }); }) });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+router.post('/sermon-prep/ack', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map((x: any) => parseInt(x, 10)).filter((x: number) => x > 0).slice(0, 100);
+    if (ids.length) await pool.query('UPDATE cms_sermon_prep SET collected = 1 WHERE id IN (?)', [ids]);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+
 /** "We're live" on the website's Live page. */
 router.post('/live', async (req, res) => {
   try {
