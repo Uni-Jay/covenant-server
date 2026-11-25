@@ -164,6 +164,9 @@ const TABLES: string[] = [
     sdate VARCHAR(10) NOT NULL DEFAULT '',
     data MEDIUMTEXT NOT NULL,
     collected TINYINT NOT NULL DEFAULT 0,
+    phone_key VARCHAR(10) NOT NULL DEFAULT '',
+    pin_hash VARCHAR(100) NOT NULL DEFAULT '',
+    edited TINYINT NOT NULL DEFAULT 0,
     at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX (collected)
   ) ${T}`,
@@ -199,9 +202,20 @@ const TABLES: string[] = [
   ) ${T}`,
 ];
 
+// columns added after a table first went live (each one is tried; "already there" is fine)
+const COLUMNS: string[] = [
+  "ALTER TABLE cms_sermon_prep ADD COLUMN phone_key VARCHAR(10) NOT NULL DEFAULT ''",
+  "ALTER TABLE cms_sermon_prep ADD COLUMN pin_hash VARCHAR(100) NOT NULL DEFAULT ''",
+  "ALTER TABLE cms_sermon_prep ADD COLUMN edited TINYINT NOT NULL DEFAULT 0",
+  'ALTER TABLE cms_sermon_prep ADD INDEX phone_key (phone_key)',
+];
 export async function ensureCmsTables(connection: any) {
   for (const sql of TABLES) {
     try { await connection.query(sql); }
     catch (e: any) { console.warn('⚠️  CMS table:', e.message); }
+  }
+  for (const sql of COLUMNS) {
+    try { await connection.query(sql); }
+    catch (e: any) { if (!/Duplicate/i.test(e.message)) console.warn('⚠️  CMS column:', e.message); }
   }
 }

@@ -254,17 +254,53 @@ router.get('/public/sermon-prep/check', wrap(async (req, res) => {
   if (tooMany(req, 120)) return res.status(429).json({ message: 'Too many tries. Please wait a little.' });
   res.json({ ok: await sermonKeyOk(req.query.k) });
 }));
+// Each preacher signs their sermons with their phone number and a 4-digit PIN (chosen the first time),
+// so on the shared link they can open and change only their own sermons.
+const pinOk = (p: any) => /^\d{4}$/.test(String(p || ''));
+async function whoIs(k: any, phone: any, pin: any): Promise<{ pk: string; hash: string | null; err?: string }> {
+  if (!(await sermonKeyOk(k))) return { pk: '', hash: null, err: 'This link has changed. Please ask the media team for the current sermon link.' };
+  const pk = phoneKey(phone);
+  if (pk.length < 10) return { pk, hash: null, err: 'Type your phone number (the one you use on WhatsApp).' };
+  if (!pinOk(pin)) return { pk, hash: null, err: 'Type your 4-digit PIN.' };
+  const r = (await q("SELECT pin_hash FROM cms_sermon_prep WHERE phone_key = ? AND pin_hash <> '' ORDER BY id DESC LIMIT 1", [pk]))[0];
+  if (!r) return { pk, hash: null };   // first time with this phone: the PIN is set now
+  if (!(await bcrypt.compare(String(pin), r.pin_hash))) return { pk, hash: r.pin_hash, err: 'That PIN is not right for this phone number. If you have forgotten it, ask the media team to reset it.' };
+  return { pk, hash: r.pin_hash };
+}
 router.post('/public/sermon-prep', wrap(async (req, res) => {
   if (tooMany(req, 60)) return res.status(429).json({ message: 'Too many sends from this connection. Please wait a little and try again.' });
   const b = req.body || {};
-  if (!(await sermonKeyOk(b.k))) return res.status(403).json({ message: 'This link has changed. Please ask the media team for the current sermon link.' });
+  const me = await whoIs(b.k, b.phone, b.pin);
+  if (me.err) return res.status(me.err.startsWith('This link') ? 403 : 400).json({ message: me.err });
   const it = sermonClean(b);
   if (!it.title && !it.points.length) return res.status(400).json({ message: 'Type the sermon title first.' });
-  // the same preacher correcting the same service replaces what has not been collected yet
-  await q('DELETE FROM cms_sermon_prep WHERE collected = 0 AND preacher = ? AND sdate = ?', [it.preacher, it.date]);
-  await q('INSERT INTO cms_sermon_prep (title, preacher, sdate, data) VALUES (?, ?, ?, ?)', [it.title, it.preacher, it.date, JSON.stringify(it)]);
-  await q('DELETE FROM cms_sermon_prep WHERE collected = 1 AND at < NOW() - INTERVAL 180 DAY');
-  res.json({ ok: true });
+  const hash = me.hash || await bcrypt.hash(String(b.pin), 10);
+  const id = parseInt(b.id, 10);
+  if (id) {   // changing one of their own sermons: Church Studio collects the new version
+    const row = (await q('SELECT id, phone_key FROM cms_sermon_prep WHERE id = ?', [id]))[0];
+    if (!row || row.phone_key !== me.pk) return res.status(403).json({ message: 'That sermon is not under your phone number.' });
+    await q('UPDATE cms_sermon_prep SET title = ?, preacher = ?, sdate = ?, data = ?, pin_hash = ?, collected = 0, edited = 1, at = CURRENT_TIMESTAMP WHERE id = ?', [it.title, it.preacher, it.date, JSON.stringify(it), hash, id]);
+    return res.json({ ok: true, id });
+  }
+  // sending the same service again (not yet collected) replaces it
+  const same = (await q('SELECT id FROM cms_sermon_prep WHERE phone_key = ? AND sdate = ? AND collected = 0 ORDER BY id DESC LIMIT 1', [me.pk, it.date]))[0];
+  if (same) {
+    await q('UPDATE cms_sermon_prep SET title = ?, preacher = ?, data = ?, pin_hash = ?, at = CURRENT_TIMESTAMP WHERE id = ?', [it.title, it.preacher, JSON.stringify(it), hash, same.id]);
+    return res.json({ ok: true, id: same.id });
+  }
+  const r: any = await q('INSERT INTO cms_sermon_prep (title, preacher, sdate, data, phone_key, pin_hash) VALUES (?, ?, ?, ?, ?, ?)', [it.title, it.preacher, it.date, JSON.stringify(it), me.pk, hash]);
+  await q('DELETE FROM cms_sermon_prep WHERE collected = 1 AND at < NOW() - INTERVAL 365 DAY');
+  res.json({ ok: true, id: r.insertId, firstPin: !me.hash });
+}));
+/** "My sermons": only the ones sent with this phone number and PIN */
+router.post('/public/sermon-prep/mine', wrap(async (req, res) => {
+  if (tooMany(req, 30)) return res.status(429).json({ message: 'Too many tries. Please wait a while and try again.' });
+  const b = req.body || {};
+  const me = await whoIs(b.k, b.phone, b.pin);
+  if (me.err) return res.status(me.err.startsWith('This link') ? 403 : 400).json({ message: me.err });
+  if (!me.hash) return res.json({ ok: true, items: [] });
+  const rows = await q('SELECT id, data, collected, at FROM cms_sermon_prep WHERE phone_key = ? ORDER BY id DESC LIMIT 30', [me.pk]);
+  res.json({ ok: true, items: rows.map((r: any) => { let d: any = {}; try { d = JSON.parse(r.data); } catch (e) { /* skip */ } return { id: r.id, collected: !!r.collected, at: r.at, data: d }; }) });
 }));
 
 // ------------------------------------------------------------------ member portal sign-up (website account + link to the church register)

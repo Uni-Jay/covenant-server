@@ -230,8 +230,17 @@ router.post('/sermon-prep/key', async (req, res) => {
 });
 router.get('/sermon-prep/pending', async (_req, res) => {
   try {
-    const [rows]: any = await pool.query('SELECT id, data, at FROM cms_sermon_prep WHERE collected = 0 ORDER BY id LIMIT 50');
-    res.json({ ok: true, items: rows.map((r: any) => { let d: any = {}; try { d = JSON.parse(r.data); } catch (e) {} return Object.assign(d, { webId: r.id, t: new Date(r.at).getTime() }); }) });
+    const [rows]: any = await pool.query('SELECT id, data, at, edited FROM cms_sermon_prep WHERE collected = 0 ORDER BY id LIMIT 50');
+    res.json({ ok: true, items: rows.map((r: any) => { let d: any = {}; try { d = JSON.parse(r.data); } catch (e) {} return Object.assign(d, { webId: r.id, t: new Date(r.at).getTime(), edited: !!r.edited }); }) });
+  } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
+});
+/** A preacher forgot their PIN: the media team clears it, and the next sermon they send sets a new one */
+router.post('/sermon-prep/reset-pin', async (req, res) => {
+  try {
+    const pk = phoneKey(req.body?.phone);
+    if (pk.length < 10) return res.status(400).json({ ok: false, message: 'Type the phone number.' });
+    const [r]: any = await pool.query("UPDATE cms_sermon_prep SET pin_hash = '' WHERE phone_key = ?", [pk]);
+    res.json({ ok: true, n: r.affectedRows || 0 });
   } catch (e: any) { res.status(500).json({ ok: false, message: e.message }); }
 });
 router.post('/sermon-prep/ack', async (req, res) => {
